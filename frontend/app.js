@@ -120,19 +120,28 @@ $("emailReport").addEventListener("click",()=>{
  "Executive assessment: This report records the results of an authorized, lightweight, non-invasive automated review of the publicly accessible page and a limited sample of same-site links. Findings are observations requiring manual validation, not confirmed exploitability.",
  "",
  "2. FINDINGS, RISK AND REMEDIATION",
- ...(issues.length?issues.map((x,i)=>[
- "Finding "+(i+1)+": "+String(x.title||"Untitled").toUpperCase(),
- "Severity: "+String(x.severity||"Unclassified").toUpperCase(),
- "Category: "+(x.category||"General"),
- "Observation: "+(x.details||"No detail provided."),
- "Recommended action: "+(x.recommendation||"Review and remediate the affected configuration."),
- "Implementation guidance: "+detailedFix(x),
- "Validation: Re-test the affected page/configuration after remediation.",
- ""
- ].join("\n")):["No findings were returned by the checks performed. This does not establish that the website is free of security weaknesses.",""],
- "3. LINK AVAILABILITY SAMPLE",
- ...(links.length?links.map((x,i)=>(i+1)+". "+x.url+" — "+(x.status?"HTTP "+x.status:(x.error||"Not checked"))):["No same-site links were available for sampling."]),
- "",
+ ];
+ if(issues.length){
+  issues.forEach((x,i)=>lines.push([
+   "Finding "+(i+1)+": "+String(x.title||"Untitled").toUpperCase(),
+   "Severity: "+String(x.severity||"Unclassified").toUpperCase(),
+   "Category: "+(x.category||"General"),
+   "Observation: "+(x.details||"No detail provided."),
+   "Recommended action: "+(x.recommendation||"Review and remediate the affected configuration."),
+   "Implementation guidance: "+detailedFix(x),
+   "Validation: Re-test the affected page/configuration after remediation.",
+   ""
+  ].join("\\n")));
+ }else{
+  lines.push("No findings were returned by the checks performed. This does not establish that the website is free of security weaknesses.","");
+ }
+ lines.push("3. LINK AVAILABILITY SAMPLE");
+ if(links.length){
+  links.forEach((x,i)=>lines.push((i+1)+". "+x.url+" — "+(x.status?"HTTP "+x.status:(x.error||"Not checked"))));
+ }else{
+  lines.push("No same-site links were available for sampling.");
+ }
+ lines.push("",
  "4. SCOPE AND METHODOLOGY",
  "Checks included HTTP response status, selected security headers, basic HTML title/meta description and image-alt checks, basic password-form signals, mixed-content indicators and a limited sample of same-host links.",
  "The scan did not perform exploitation, authenticated testing, source-code review, infrastructure assessment, configuration auditing or a comprehensive penetration test.",
