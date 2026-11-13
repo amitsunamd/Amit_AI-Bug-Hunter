@@ -34,7 +34,7 @@ window.startWebsiteScan=async function(){
  if(!url){message("Enter a website URL first.","error");return;}
  if(!$("authorized").checked){message("Confirm that you own this site or have permission.","error");return;}
  try{const parsed=new URL(url);if(!["http:","https:"].includes(parsed.protocol))throw Error("Only HTTP and HTTPS URLs are supported.");}catch(e){message(e.message||"Enter a valid URL.","error");return;}
- API_BASE=(localStorage.getItem("bugHunterApiUrl")||"").trim().replace(/\\/$/,"");
+ API_BASE=(localStorage.getItem("bugHunterApiUrl")||"").trim().replace(/\/$/,"");
  if(!API_BASE){message("Add your deployed backend URL above and tap Save.","error");return;}
  btn.disabled=true;btn.textContent="Scanning…";message("Connecting to backend and scanning. Please wait…");
  try{
