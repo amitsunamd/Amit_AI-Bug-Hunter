@@ -15,9 +15,16 @@ app = FastAPI(title="AI Bug Hunter API", version="0.1.0",
               description="Consent-based, non-invasive website checks.")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict to your deployed frontend origin before production.
-    allow_credentials=False, allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_origins=[
+        "https://amitsunamd.github.io",
+        "https://amitsunamd.github.io/Amit_AI-Bug-Hunter",
+    ],
+    allow_origin_regex=r"https://.*\\.github\\.io",
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=86400,
 )
 TIMEOUT = 8
 MAX_LINKS = 20
