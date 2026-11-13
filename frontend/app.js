@@ -3,7 +3,7 @@ let API_BASE = localStorage.getItem("bugHunterApiUrl") || "";
 const $ = id => document.getElementById(id);
 let latestReport = null;
 $("apiUrl").value = API_BASE;
-$("saveApi").addEventListener("click",()=>{const value=$("apiUrl").value.trim().replace(/\\/$/,"");if(value && !/^https?:\\/\\//i.test(value))return message("Backend URL must start with https:// or http://","error");API_BASE=value;localStorage.setItem("bugHunterApiUrl",value);message(value?"Backend URL saved on this device.":"Backend URL cleared.","success");});
+$("saveApi").addEventListener("click",()=>{let value=$("apiUrl").value.trim();while(value.endsWith("/"))value=value.slice(0,-1);if(value && !(value.startsWith("https://") || value.startsWith("http://")))return message("Backend URL must start with https:// or http://","error");API_BASE=value;localStorage.setItem("bugHunterApiUrl",value);message(value?"Backend URL saved on this device.":"Backend URL cleared.","success");});
 function safe(value){return String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function message(text,kind=""){ $("message").textContent=text; $("message").className="message "+kind; }
 function render(data){
