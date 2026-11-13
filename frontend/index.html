@@ -37,5 +37,15 @@ function saveBackendUrl(){
  status.textContent="Backend URL saved. Checking connection…";status.className="message";
  fetch(value+"/health",{method:"GET",mode:"cors",cache:"no-store"}).then(r=>{if(!r.ok)throw Error("HTTP "+r.status);return r.json();}).then(data=>{if(data.status!=="ok")throw Error("Unexpected health response");status.textContent="✓ Connected successfully. Backend is ready for scanning.";status.className="message success";}).catch(e=>{status.textContent="URL saved, but connection check failed: "+(e.message||"Network/CORS error");status.className="message error";});
 }
-</script><script src="./app.js?v=20"></script>
+</script><script>
+window.__bugHunterScriptError = "";
+window.addEventListener("error", function(event) {
+  if (event && event.filename && event.filename.includes("app.js")) {
+    window.__bugHunterScriptError = (event.message || "JavaScript startup error") + (event.lineno ? " (line " + event.lineno + ")" : "");
+    const m = document.getElementById("message");
+    if (m) { m.textContent = "Scanner startup error: " + window.__bugHunterScriptError; m.className = "message error"; }
+  }
+});
+</script>
+<script src="./app.js?v=21" onerror="this.dataset.failed='true';document.getElementById('message').textContent='Could not download app.js. Check the dashboard deployment and try again.';document.getElementById('message').className='message error';"></script>
 </body></html>
