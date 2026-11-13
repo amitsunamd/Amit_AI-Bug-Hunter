@@ -12,7 +12,7 @@
 <section class="hero"><p class="eyebrow">SECURITY · QUALITY · REPORTING</p><h1>Find issues.<br><span>Fix with confidence.</span></h1><p class="muted">Run a lightweight, non-invasive check on a website you own or are authorized to test.</p></section>
 <section class="panel">
 <div class="heading"><div><p class="eyebrow">NEW SCAN</p><h2>Website scanner</h2></div><span class="tag">Safe mode</span></div>
-<label for="apiUrl">Backend API URL</label><div class="apirow"><input id="apiUrl" type="url" placeholder="https://your-service.onrender.com"><button id="saveApi" class="secondary" type="button">Save</button></div><p id="apiMessage" class="message" role="status">Backend URL is not checked yet.</p><p class="tiny muted">Save the deployed backend URL once. Connection status will appear here.</p><label for="targetUrl">Website URL</label><input id="targetUrl" type="url" placeholder="https://example.com">
+<label for="apiUrl">Backend API URL</label><div class="apirow"><input id="apiUrl" type="url" placeholder="https://your-service.onrender.com"><button id="saveApi" class="secondary" type="button" onclick="saveBackendUrl()">Save</button></div><p id="apiMessage" class="message" role="status">Backend URL is not checked yet.</p><p class="tiny muted">Save the deployed backend URL once. Connection status will appear here.</p><label for="targetUrl">Website URL</label><input id="targetUrl" type="url" placeholder="https://example.com">
 <label class="consent"><input id="authorized" type="checkbox"> I own this website or have explicit permission to test it.</label>
 <button id="scanButton" class="primary">Start website scan <span>→</span></button><p id="message" class="message" role="status">Backend connection will be configured after deployment.</p>
 </section>
@@ -26,5 +26,16 @@
 <section class="panel"><h2>Recent scan history</h2><div id="historyList" class="history-list"><p class="muted tiny">Your recent scans will appear here on this device.</p></div></section>
 <section class="panel"><h2>Checks in this version</h2><div class="features"><div>↗ <b>HTTP status</b><small>Server response</small></div><div>⌁ <b>Security headers</b><small>Browser protections</small></div><div>◎ <b>HTML quality</b><small>Title and image alt</small></div><div>⌕ <b>Forms</b><small>Basic password signals</small></div><div>⇄ <b>Broken links</b><small>Same-site sample</small></div><div>▣ <b>Mixed content</b><small>HTTP resources</small></div></div></section>
 <footer>AI Bug Hunter · Early development build · Authorized testing only</footer>
-</main><script src="./app.js"></script>
+</main><script>
+function saveBackendUrl(){
+ const input=document.getElementById("apiUrl"), status=document.getElementById("apiMessage");
+ const value=input.value.trim().replace(/\\/+$/, "");
+ if(!value){status.textContent="Enter your backend API URL first.";status.className="message error";return;}
+ let parsed;try{parsed=new URL(value);}catch(e){status.textContent="Enter a valid backend URL.";status.className="message error";return;}
+ if(!["https:","http:"].includes(parsed.protocol)){status.textContent="Use an HTTPS or HTTP backend URL.";status.className="message error";return;}
+ try{localStorage.setItem("bugHunterApiUrl",value);}catch(e){status.textContent="Browser storage is blocked. Allow site data and try again.";status.className="message error";return;}
+ status.textContent="Backend URL saved. Checking connection…";status.className="message";
+ fetch(value+"/health",{method:"GET",mode:"cors",cache:"no-store"}).then(r=>{if(!r.ok)throw Error("HTTP "+r.status);return r.json();}).then(data=>{if(data.status!=="ok")throw Error("Unexpected health response");status.textContent="✓ Connected successfully. Backend is ready for scanning.";status.className="message success";}).catch(e=>{status.textContent="URL saved, but connection check failed: "+(e.message||"Network/CORS error");status.className="message error";});
+}
+</script><script src="./app.js"></script>
 </body></html>
