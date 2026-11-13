@@ -39,24 +39,51 @@ function saveBackendUrl(){
 }
 </script><script src="./app.js?v=16"></script>
 <script>
+function bhSafe(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function bhRender(data){
+ const el=id=>document.getElementById(id), s=data.summary||{}, issues=data.issues||[], links=data.links||[];
+ el("results").classList.remove("hidden");
+ el("resultTitle").textContent=data.page_title||data.target||"Scan report";
+ el("totalCount").textContent=s.total_issues??issues.length;
+ el("highCount").textContent=s.high??0;el("mediumCount").textContent=s.medium??0;el("lowCount").textContent=s.low??0;
+ el("issueList").innerHTML=issues.length?issues.map(x=>'<article class="issue '+bhSafe(x.severity)+'"><h3>'+bhSafe(x.title)+' · '+bhSafe(x.severity)+'</h3><p>'+bhSafe(x.category)+' — '+bhSafe(x.details)+'</p><p class="fix">Suggested fix: '+bhSafe(x.recommendation)+'</p></article>').join(""):'<article class="issue"><h3>No issues detected by these checks</h3><p>This does not prove the website is vulnerability-free.</p></article>';
+ el("linkList").innerHTML=links.length?links.map(x=>'<div class="link">'+bhSafe(x.url)+' <b>'+(x.status?'HTTP '+bhSafe(x.status):bhSafe(x.error||"Not checked"))+'</b></div>').join(""):'<div class="link">No same-site links available.</div>';
+ const penalty=Number(s.high||0)*25+Number(s.medium||0)*12+Number(s.low||0)*5+Number(s.info||0),score=Math.max(0,Math.min(100,100-penalty));
+ el("securityScore").textContent=score+"/100";el("securityGrade").textContent="Grade "+(score>=95?"A":score>=85?"B":score>=70?"C":score>=50?"D":"F");
+ el("scoreNote").textContent=(s.total_issues||issues.length)+" finding(s) detected. Indicative score only; not a certification.";
+ el("downloadJson").disabled=false;el("printReport").disabled=false;
+}
+function bhSaveReport(data){
+ localStorage.setItem("bugHunterLastReport",JSON.stringify(data));
+ let items=[];try{items=JSON.parse(localStorage.getItem("bugHunterHistory")||"[]")}catch(e){}
+ items.unshift({target:data.target,title:data.page_title,checked_at:data.checked_at||new Date().toISOString(),total:(data.summary||{}).total_issues??(data.issues||[]).length,report:data});
+ localStorage.setItem("bugHunterHistory",JSON.stringify(items.slice(0,10)));
+ const list=document.getElementById("historyList");
+ list.innerHTML=items.slice(0,8).map(x=>'<div class="history-item"><div><b>'+bhSafe(x.title||x.target)+'</b><small>'+bhSafe(new Date(x.checked_at).toLocaleString())+'</small></div><b>'+bhSafe(x.total)+' finding(s)</b></div>').join("");
+}
 window.startWebsiteScan = async function(){
- const button=document.getElementById("scanButton");
- const status=document.getElementById("message");
- const target=document.getElementById("targetUrl").value.trim();
- const api=document.getElementById("apiUrl").value.trim().replace(/\/$/,"");
+ const button=document.getElementById("scanButton"),status=document.getElementById("message");
+ const target=document.getElementById("targetUrl").value.trim(),api=document.getElementById("apiUrl").value.trim().replace(/\/$/,"");
  if(!target){status.textContent="Enter a website URL first.";status.className="message error";return;}
  if(!document.getElementById("authorized").checked){status.textContent="Confirm that you own this site or have permission.";status.className="message error";return;}
  if(!api){status.textContent="Enter and save the backend API URL first.";status.className="message error";return;}
  button.disabled=true;button.textContent="Scanning…";status.textContent="Connecting to scanner…";status.className="message";
  try{
   const response=await fetch(api+"/api/scan",{method:"POST",mode:"cors",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:target,authorized:true})});
-  const body=await response.text();let data;try{data=JSON.parse(body)}catch{throw Error("Backend returned HTTP "+response.status+" with an unreadable response.");}
+  const body=await response.text();let data;try{data=JSON.parse(body)}catch(e){throw Error("Backend returned HTTP "+response.status+" with an unreadable response.");}
   if(!response.ok)throw Error(data.detail||"Scan failed (HTTP "+response.status+").");
-  status.textContent="Scan completed. "+((data.summary&&data.summary.total_issues)||0)+" finding(s) reported. Reload to view full report.";
-  status.className="message success";
-  if(typeof render==="function")render(data);
+  bhSaveReport(data);bhRender(data);
+  status.textContent="Scan completed and report saved on this device. Reloading will keep this report.";status.className="message success";
  }catch(error){status.textContent=error.message||"Scanner request failed.";status.className="message error";}
  finally{button.disabled=false;button.textContent="Start website scan →";}
 };
+(function restoreSavedReport(){
+ try{
+  const raw=localStorage.getItem("bugHunterLastReport");
+  if(raw){const data=JSON.parse(raw);bhRender(data);const status=document.getElementById("message");status.textContent="Previous scan report restored from this device.";status.className="message success";}
+  const items=JSON.parse(localStorage.getItem("bugHunterHistory")||"[]");
+  if(items.length)document.getElementById("historyList").innerHTML=items.slice(0,8).map(x=>'<div class="history-item"><div><b>'+bhSafe(x.title||x.target)+'</b><small>'+bhSafe(new Date(x.checked_at).toLocaleString())+'</small></div><b>'+bhSafe(x.total)+' finding(s)</b></div>').join("");
+ }catch(e){console.warn("Could not restore saved scan report",e);}
+})();
 </script>
 </body></html>
