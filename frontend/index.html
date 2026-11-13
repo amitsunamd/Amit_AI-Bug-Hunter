@@ -14,7 +14,7 @@
 <div class="heading"><div><p class="eyebrow">NEW SCAN</p><h2>Website scanner</h2></div><span class="tag">Safe mode</span></div>
 <label for="apiUrl">Backend API URL</label><div class="apirow"><input id="apiUrl" type="url" placeholder="https://your-service.onrender.com"><button id="saveApi" class="secondary" type="button" onclick="saveBackendUrl()">Save</button></div><p id="apiMessage" class="message" role="status">Backend URL is not checked yet.</p><p class="tiny muted">Save the deployed backend URL once. Connection status will appear here.</p><label for="targetUrl">Website URL</label><input id="targetUrl" type="url" placeholder="https://example.com">
 <label class="consent"><input id="authorized" type="checkbox"> I own this website or have explicit permission to test it.</label>
-<button id="scanButton" class="primary" type="button" onclick="startWebsiteScan()">Start website scan <span>→</span></button><p id="message" class="message" role="status">Backend connection will be configured after deployment.</p>
+<button id="scanButton" class="primary" type="button" onclick="if(typeof window.startWebsiteScan==='function'){window.startWebsiteScan()}else{const m=document.getElementById('message');m.textContent='Scanner script did not load. Reload the dashboard and try again.';m.className='message error';}">Start website scan <span>→</span></button><p id="message" class="message" role="status">Backend connection will be configured after deployment.</p>
 </section>
 <section id="results" class="hidden">
 <div class="heading"><h2 id="resultTitle">Scan report</h2><div class="report-actions"><button id="printReport" class="secondary" disabled>Save PDF</button><button id="downloadJson" class="secondary" disabled>Export JSON</button></div></div>
