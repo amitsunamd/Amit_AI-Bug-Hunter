@@ -37,5 +37,5 @@ function saveBackendUrl(){
  status.textContent="Backend URL saved. Checking connection…";status.className="message";
  fetch(value+"/health",{method:"GET",mode:"cors",cache:"no-store"}).then(r=>{if(!r.ok)throw Error("HTTP "+r.status);return r.json();}).then(data=>{if(data.status!=="ok")throw Error("Unexpected health response");status.textContent="✓ Connected successfully. Backend is ready for scanning.";status.className="message success";}).catch(e=>{status.textContent="URL saved, but connection check failed: "+(e.message||"Network/CORS error");status.className="message error";});
 }
-</script><script src="./app.js?v=18"></script>
+</script><script src="./app.js?v=19"></script>
 </body></html>
