@@ -1,5 +1,7 @@
 // AI Bug Hunter — dashboard and report manager
-let API_BASE = localStorage.getItem("bugHunterApiUrl") || "";
+function storageGet(key, fallback=""){try{return localStorage.getItem(key) ?? fallback;}catch(e){return fallback;}}
+function storageSet(key, value){try{return localStorage.setItem(key,value),true;}catch(e){return false;}}
+let API_BASE = storageGet("bugHunterApiUrl", "");
 const $ = id => document.getElementById(id);
 let latestReport = null;
 $("apiUrl").value = API_BASE;
@@ -31,15 +33,15 @@ function scoreReport(data){
  $("securityScore").textContent=score+"/100";$("securityGrade").textContent="Grade "+grade;
  $("scoreNote").textContent=total?total+" finding(s). Heuristic score only; not a certification or proof of security.":"No findings in the checks performed; this is not proof of security.";
 }
-function getHistory(){try{return JSON.parse(localStorage.getItem("bugHunterHistory")||"[]")}catch(e){return []}}
+function getHistory(){try{return JSON.parse(storageGet("bugHunterHistory","[]"))}catch(e){return []}}
 function saveReport(data){
  latestReport=data;
- localStorage.setItem("bugHunterLastReport",JSON.stringify(data));
+ storageSet("bugHunterLastReport",JSON.stringify(data));
  const items=getHistory();
  const key=data.checked_at||new Date().toISOString();
  const filtered=items.filter(x=>x.checked_at!==key || x.target!==data.target);
  filtered.unshift({target:data.target,title:data.page_title,checked_at:key,total:(data.summary||{}).total_issues??(data.issues||[]).length,report:data});
- localStorage.setItem("bugHunterHistory",JSON.stringify(filtered.slice(0,20)));
+ storageSet("bugHunterHistory",JSON.stringify(filtered.slice(0,20)));
  renderHistory();
 }
 function renderHistory(){
@@ -58,7 +60,7 @@ function render(data){
  scoreReport(data);$("downloadJson").disabled=false;$("printReport").disabled=false;
 }
 function restore(){
- const raw=localStorage.getItem("bugHunterLastReport");
+ const raw=storageGet("bugHunterLastReport","");
  if(raw){try{const data=JSON.parse(raw);render(data);message("Previous scan report restored from this device.","success");}catch(e){console.warn("Saved report could not be restored",e);}}
  renderHistory();
 }
@@ -67,7 +69,7 @@ window.startWebsiteScan=async function(){
  if(!url){message("Enter a website URL first.","error");return;}
  if(!$("authorized").checked){message("Confirm that you own this site or have permission.","error");return;}
  try{const parsed=new URL(url);if(!["http:","https:"].includes(parsed.protocol))throw Error("Only HTTP and HTTPS URLs are supported.");}catch(e){message(e.message||"Enter a valid URL.","error");return;}
- API_BASE=($("apiUrl").value.trim()||localStorage.getItem("bugHunterApiUrl")||"").replace(/\/$/,"");
+ API_BASE=($("apiUrl").value.trim()||storageGet("bugHunterApiUrl","")).replace(/\/$/,"");
  if(!API_BASE){message("Add your deployed backend URL and tap Save.","error");return;}
  btn.disabled=true;btn.textContent="Scanning…";message("Connecting to backend and scanning. Please wait…");
  try{
