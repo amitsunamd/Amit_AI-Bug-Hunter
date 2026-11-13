@@ -4,24 +4,22 @@ const $ = id => document.getElementById(id);
 let latestReport = null;
 $("apiUrl").value = API_BASE;
 $("saveApi").addEventListener("click",async()=>{
- let value=$("apiUrl").value.trim();
- while(value.endsWith("/"))value=value.slice(0,-1);
+ const value=$("apiUrl").value.trim().replace(/\\/+$/,"");
  const status=$("apiMessage");
  if(!value){status.textContent="Enter your backend API URL first.";status.className="message error";return;}
- if(!(value.startsWith("https://")||value.startsWith("http://"))){status.textContent="Backend URL must start with https:// or http://";status.className="message error";return;}
- API_BASE=value;
- localStorage.setItem("bugHunterApiUrl",value);
- status.textContent="Backend URL saved. Checking connection…";
- status.className="message";
+ let parsed;
+ try{parsed=new URL(value);}catch{status.textContent="Enter a valid backend URL.";status.className="message error";return;}
+ if(!["https:","http:"].includes(parsed.protocol)){status.textContent="Backend URL must use HTTPS or HTTP.";status.className="message error";return;}
+ API_BASE=value;localStorage.setItem("bugHunterApiUrl",value);
+ status.textContent="Backend URL saved. Checking connection…";status.className="message";
  try{
-   const response=await fetch(value+"/health",{method:"GET",cache:"no-store"});
-   if(!response.ok)throw new Error("Health check returned HTTP "+response.status);
+   const response=await fetch(value+"/health",{method:"GET",mode:"cors",cache:"no-store",redirect:"follow"});
+   if(!response.ok)throw new Error("HTTP "+response.status);
    const data=await response.json();
-   if(data.status!=="ok")throw new Error("Backend did not return status ok.");
-   status.textContent="✓ Connected successfully. Backend is ready for scanning.";
-   status.className="message success";
+   if(data.status!=="ok")throw new Error("Unexpected health response");
+   status.textContent="✓ Connected successfully. Backend is ready for scanning.";status.className="message success";
  }catch(error){
-   status.textContent="URL saved, but connection check failed: "+(error.message||"Network or CORS error")+". Try again in a moment.";
+   status.textContent="URL saved, but browser could not read the health response. Check internet access, CORS, or browser restrictions. ("+(error.message||"Network error")+")";
    status.className="message error";
  }
 });
