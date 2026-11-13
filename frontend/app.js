@@ -161,7 +161,7 @@ $("emailReport").addEventListener("click",()=>{
  "Prepared by: AI Bug Hunter",
  "Generated: "+new Date().toLocaleString(),
  "END OF REPORT"
- );
+ ];
  const subject="[Confidential Website Security Assessment] "+domain+" — "+(s.total_issues??issues.length)+" observation(s)";
  const href="mailto:"+encodeURIComponent(to)+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(lines.join("\n"));
  $("emailMessage").textContent="Professional assessment draft prepared. Review it in your email app and send it manually.";
