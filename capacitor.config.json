@@ -1,0 +1,8 @@
+{
+  "appId": "com.amitpariyar.aibughunter",
+  "appName": "AI Bug Hunter",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
