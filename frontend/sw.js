@@ -1,4 +1,4 @@
-const CACHE="ai-bug-hunter-shell-v8";
+const CACHE="ai-bug-hunter-shell-v9";
 const FILES=["./","./index.html","./style.css","./app.js","./manifest.webmanifest"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)));self.skipWaiting();});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim();});
