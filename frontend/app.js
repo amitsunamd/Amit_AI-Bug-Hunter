@@ -1,7 +1,9 @@
 // Set this to your deployed API URL after backend hosting.
-const API_BASE = "";
+let API_BASE = localStorage.getItem("bugHunterApiUrl") || "";
 const $ = id => document.getElementById(id);
 let latestReport = null;
+$("apiUrl").value = API_BASE;
+$("saveApi").addEventListener("click",()=>{const value=$("apiUrl").value.trim().replace(/\\/$/,"");if(value && !/^https?:\\/\\//i.test(value))return message("Backend URL must start with https:// or http://","error");API_BASE=value;localStorage.setItem("bugHunterApiUrl",value);message(value?"Backend URL saved on this device.":"Backend URL cleared.","success");});
 function safe(value){return String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function message(text,kind=""){ $("message").textContent=text; $("message").className="message "+kind; }
 function render(data){
@@ -20,7 +22,7 @@ $("scanButton").addEventListener("click",async()=>{
  if(!url)return message("Enter a website URL first.","error");
  if(!$("authorized").checked)return message("Confirm that you own this site or have permission.","error");
  try{const parsed=new URL(url);if(!["http:","https:"].includes(parsed.protocol))throw Error("Only HTTP and HTTPS URLs are supported.");}catch(e){return message(e.message||"Enter a valid URL.","error");}
- if(!API_BASE)return message("Backend is not deployed yet. Dashboard is ready; connect the API URL in frontend/app.js after hosting.","error");
+ if(!API_BASE)return message("Add your deployed backend URL above and tap Save.","error");
  const btn=$("scanButton");btn.disabled=true;btn.textContent="Scanning…";message("Scanning authorized public page…");
  try{
   const response=await fetch(API_BASE.replace(/\/$/,"")+"/api/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,authorized:true})});
