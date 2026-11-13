@@ -28,18 +28,29 @@ function render(data){
  items.unshift({target:data.target,title:data.page_title,checked_at:data.checked_at,total:data.summary.total_issues,report:data});
  localStorage.setItem("bugHunterHistory",JSON.stringify(items.slice(0,10)));history();
 }
-$("scanButton").addEventListener("click",async()=>{
+window.startWebsiteScan=async function(){
+ const btn=$("scanButton");
  const url=$("targetUrl").value.trim();
- if(!url)return message("Enter a website URL first.","error");
- if(!$("authorized").checked)return message("Confirm that you own this site or have permission.","error");
- try{const parsed=new URL(url);if(!["http:","https:"].includes(parsed.protocol))throw Error("Only HTTP and HTTPS URLs are supported.");}catch(e){return message(e.message||"Enter a valid URL.","error");}
- API_BASE=(localStorage.getItem("bugHunterApiUrl")||"").trim().replace(/\/$/,"");
- if(!API_BASE)return message("Add your deployed backend URL above and tap Save.","error");
- const btn=$("scanButton");btn.disabled=true;btn.textContent="Scanning…";message("Scanning authorized public page…");
- try{const response=await fetch(API_BASE.replace(/\/$/,"")+"/api/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,authorized:true})});const data=await response.json();if(!response.ok)throw Error(data.detail||"Scan failed.");render(data);message("Scan complete. Manually verify findings.","success");}
- catch(e){message(e.message||"Could not connect to scanner.","error");}
- finally{btn.disabled=false;btn.innerHTML='Start website scan <span>→</span>';}
-});
+ if(!url){message("Enter a website URL first.","error");return;}
+ if(!$("authorized").checked){message("Confirm that you own this site or have permission.","error");return;}
+ try{const parsed=new URL(url);if(!["http:","https:"].includes(parsed.protocol))throw Error("Only HTTP and HTTPS URLs are supported.");}catch(e){message(e.message||"Enter a valid URL.","error");return;}
+ API_BASE=(localStorage.getItem("bugHunterApiUrl")||"").trim().replace(/\\/$/,"");
+ if(!API_BASE){message("Add your deployed backend URL above and tap Save.","error");return;}
+ btn.disabled=true;btn.textContent="Scanning…";message("Connecting to backend and scanning. Please wait…");
+ try{
+  const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),45000);
+  let response;
+  try{response=await fetch(API_BASE+"/api/scan",{method:"POST",mode:"cors",cache:"no-store",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,authorized:true}),signal:controller.signal});}
+  finally{clearTimeout(timeout);}
+  const raw=await response.text();let data;try{data=JSON.parse(raw);}catch{throw Error("Backend returned an unreadable response (HTTP "+response.status+").");}
+  if(!response.ok)throw Error(data.detail||("Scan failed (HTTP "+response.status+")."));
+  if(!data.summary||!Array.isArray(data.issues)||!Array.isArray(data.links))throw Error("Backend response format is incomplete.");
+  render(data);message("Scan complete. Manually verify findings.","success");
+ }catch(e){
+  const reason=e.name==="AbortError"?"Scan timed out after 45 seconds. Try again.":(e.message||"Could not connect to scanner.");
+  message(reason,"error");
+ }finally{btn.disabled=false;btn.innerHTML='Start website scan <span>→</span>';}
+};
 $("downloadJson").addEventListener("click",()=>{if(!latestReport)return;const blob=new Blob([JSON.stringify(latestReport,null,2)],{type:"application/json"});const u=URL.createObjectURL(blob),a=document.createElement("a");a.href=u;a.download="ai-bug-hunter-report.json";a.click();URL.revokeObjectURL(u);});
 $("printReport").addEventListener("click",()=>{if(latestReport)window.print();});
 $("emailReport").addEventListener("click",()=>{
