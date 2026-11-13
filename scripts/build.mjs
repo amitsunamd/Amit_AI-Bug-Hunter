@@ -1,0 +1,10 @@
+import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+await mkdir("www",{recursive:true});
+await cp("frontend","www",{recursive:true});
+const p="www/app.js";
+let js=await readFile(p,"utf8");
+const api=process.env.BUG_HUNTER_API_URL || "";
+js=js.replace('const API_BASE = "";', 'const API_BASE = '+JSON.stringify(api)+';');
+await writeFile(p,js);
+console.log("Built mobile web assets. API configured:", Boolean(api));
