@@ -3,7 +3,28 @@ let API_BASE = localStorage.getItem("bugHunterApiUrl") || "";
 const $ = id => document.getElementById(id);
 let latestReport = null;
 $("apiUrl").value = API_BASE;
-$("saveApi").addEventListener("click",()=>{let value=$("apiUrl").value.trim();while(value.endsWith("/"))value=value.slice(0,-1);if(value && !(value.startsWith("https://") || value.startsWith("http://")))return message("Backend URL must start with https:// or http://","error");API_BASE=value;localStorage.setItem("bugHunterApiUrl",value);message(value?"Backend URL saved on this device.":"Backend URL cleared.","success");});
+$("saveApi").addEventListener("click",async()=>{
+ let value=$("apiUrl").value.trim();
+ while(value.endsWith("/"))value=value.slice(0,-1);
+ const status=$("apiMessage");
+ if(!value){status.textContent="Enter your backend API URL first.";status.className="message error";return;}
+ if(!(value.startsWith("https://")||value.startsWith("http://"))){status.textContent="Backend URL must start with https:// or http://";status.className="message error";return;}
+ API_BASE=value;
+ localStorage.setItem("bugHunterApiUrl",value);
+ status.textContent="Backend URL saved. Checking connection…";
+ status.className="message";
+ try{
+   const response=await fetch(value+"/health",{method:"GET",cache:"no-store"});
+   if(!response.ok)throw new Error("Health check returned HTTP "+response.status);
+   const data=await response.json();
+   if(data.status!=="ok")throw new Error("Backend did not return status ok.");
+   status.textContent="✓ Connected successfully. Backend is ready for scanning.";
+   status.className="message success";
+ }catch(error){
+   status.textContent="URL saved, but connection check failed: "+(error.message||"Network or CORS error")+". Try again in a moment.";
+   status.className="message error";
+ }
+});
 function safe(value){return String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function message(text,kind=""){ $("message").textContent=text; $("message").className="message "+kind; }
 function scoreReport(data){
@@ -102,3 +123,6 @@ $("emailReport").addEventListener("click",()=>{
 });
 history();
 if ("serviceWorker" in navigator && location.protocol.startsWith("http"))window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+
+const apiStatus=$("apiMessage");
+if(API_BASE&&apiStatus){apiStatus.textContent="Saved backend URL: "+API_BASE;apiStatus.className="message";}
