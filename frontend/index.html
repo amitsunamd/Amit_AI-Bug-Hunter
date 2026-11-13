@@ -29,7 +29,7 @@
 </main><script>
 function saveBackendUrl(){
  const input=document.getElementById("apiUrl"), status=document.getElementById("apiMessage");
- const value=input.value.trim().replace(/\\/+$/, "");
+ let value=input.value.trim(); while(value.endsWith("/")) value=value.slice(0,-1);
  if(!value){status.textContent="Enter your backend API URL first.";status.className="message error";return;}
  let parsed;try{parsed=new URL(value);}catch(e){status.textContent="Enter a valid backend URL.";status.className="message error";return;}
  if(!["https:","http:"].includes(parsed.protocol)){status.textContent="Use an HTTPS or HTTP backend URL.";status.className="message error";return;}
