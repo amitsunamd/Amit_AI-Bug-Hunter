@@ -156,7 +156,6 @@ $("emailReport").addEventListener("click",()=>{
  $("emailMessage").textContent="Professional assessment draft prepared. Review it in your email app and send it manually.";
  window.location.href=href;
 });
-history();
 restore();
 if("serviceWorker" in navigator&&location.protocol.startsWith("http"))window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 const apiStatus=$("apiMessage");
