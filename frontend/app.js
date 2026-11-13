@@ -34,3 +34,7 @@ $("downloadJson").addEventListener("click",()=>{
  const blob=new Blob([JSON.stringify(latestReport,null,2)],{type:"application/json"});
  const u=URL.createObjectURL(blob),a=document.createElement("a");a.href=u;a.download="ai-bug-hunter-report.json";a.click();URL.revokeObjectURL(u);
 });
+
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+}
