@@ -46,11 +46,58 @@ $("emailReport").addEventListener("click",()=>{
  if(!latestReport)return;
  const to=$("emailTo").value.trim();
  if(to && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)){$("emailMessage").textContent="Enter a valid recipient email address.";return;}
- const d=latestReport,s=d.summary||{};
- const lines=["AI Bug Hunter — Website Scan Report","Website: "+d.target,"Page title: "+(d.page_title||"N/A"),"Scanned: "+d.checked_at,"HTTP status: "+d.http_status,"Findings: "+(s.total_issues||0)+" | High: "+(s.high||0)+" | Medium: "+(s.medium||0)+" | Low: "+(s.low||0)+" | Info: "+(s.info||0),"","Findings:",...(d.issues||[]).map((x,i)=>(i+1)+". ["+x.severity.toUpperCase()+"] "+x.title+" — "+x.details+" Suggested fix: "+x.recommendation),"","Same-site links checked:",...(d.links||[]).map(x=>x.url+" — "+(x.status?"HTTP "+x.status:(x.error||"not checked"))),"","Note: Automated findings are indicators, not proof. Manually verify each result. Scan only systems you own or are authorized to test."];
- const subject="AI Bug Hunter scan report — "+(d.page_title||d.target);
+ const d=latestReport,s=d.summary||{}, issues=d.issues||[], links=d.links||[];
+ const score=$("securityScore").textContent||"Not calculated";
+ const grade=$("securityGrade").textContent||"Not graded";
+ const date=d.checked_at?new Date(d.checked_at).toLocaleString():"Not available";
+ const domain=(()=>{try{return new URL(d.target).hostname}catch{return d.target||"the submitted website"}})();
+ const severityCount=["high","medium","low","info"].map(k=>k[0].toUpperCase()+k.slice(1)+": "+(s[k]||0)).join(" | ");
+ const priority={"high":"Immediate review","medium":"Prioritize remediation","low":"Address during hardening","info":"Review for quality"};
+ const lines=[
+ "CONFIDENTIAL — WEBSITE SECURITY & QUALITY ASSESSMENT",
+ "AI BUG HUNTER | AUTOMATED SCAN REPORT",
+ "",
+ "1. EXECUTIVE SUMMARY",
+ "Target: "+(d.target||"N/A"),
+ "Page title: "+(d.page_title||"N/A"),
+ "Assessment date: "+date,
+ "HTTP response: "+(d.http_status||"Not available"),
+ "Total findings: "+(s.total_issues||issues.length),
+ severityCount,
+ "Indicative security score: "+score+" ("+grade+")",
+ "",
+ "Assessment overview: This report summarizes the results of a lightweight, non-invasive automated review. Findings are preliminary indicators and should be validated by a qualified reviewer.",
+ "",
+ "2. FINDINGS AND RECOMMENDED ACTIONS",
+ ...(issues.length?issues.map((x,i)=>[
+ (i+1)+". "+String(x.title||"Untitled finding").toUpperCase(),
+ "   Severity: "+String(x.severity||"Unclassified").toUpperCase()+" — "+(priority[String(x.severity||"").toLowerCase()]||"Review"),
+ "   Category: "+(x.category||"General"),
+ "   Observation: "+(x.details||"No additional details supplied."),
+ "   Recommended remediation: "+(x.recommendation||"Review the affected configuration and apply an appropriate fix."),
+ ""] .join("\n")):["No findings were returned by the checks performed. This does not establish that the website is free of vulnerabilities.",""],
+ "3. SAME-SITE LINK CHECK",
+ ...(links.length?links.map((x,i)=>(i+1)+". "+x.url+" — "+(x.status?"HTTP "+x.status:(x.error||"Not checked"))):["No same-site links were available for sampling."]),
+ "",
+ "4. SCOPE AND METHODOLOGY",
+ "The scan was limited to the submitted public page and the checks displayed by this early-development version of AI Bug Hunter, including HTTP response, selected security headers, basic HTML quality, basic form signals, sampled same-site links and mixed-content indicators.",
+ "This scan does not perform exploitation, authenticated testing, source-code review, infrastructure testing or a comprehensive penetration test.",
+ "",
+ "5. RECOMMENDED NEXT STEPS",
+ "• Validate each observation manually before treating it as a confirmed vulnerability.",
+ "• Prioritize High and Medium findings, then apply and test the recommended fixes.",
+ "• Re-scan after remediation and retain evidence of the changes.",
+ "",
+ "6. IMPORTANT LIMITATIONS",
+ "The score and letter grade are heuristic indicators based only on findings from this scan; they are not a certification, compliance assessment or guarantee of security. False positives and missed issues are possible. The assessment should only be performed on systems owned by the recipient or where explicit authorization has been granted.",
+ "",
+ "Prepared by: AI Bug Hunter",
+ "Report generated: "+new Date().toLocaleString(),
+ "End of report"
+ ];
+ const subject="[Website Security Report] "+domain+" — "+(s.total_issues||issues.length)+" finding(s)";
  const href="mailto:"+encodeURIComponent(to)+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(lines.join("\n"));
- $("emailMessage").textContent="Opening your email app with the report prepared. Review and send it there.";
+ $("emailMessage").textContent="A professional report draft is being opened in your email app. Please review the recipient and report, then send it.";
  window.location.href=href;
 });
 history();
