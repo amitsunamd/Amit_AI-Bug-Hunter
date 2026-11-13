@@ -5,6 +5,6 @@ await cp("frontend","www",{recursive:true});
 const p="www/app.js";
 let js=await readFile(p,"utf8");
 const api=process.env.BUG_HUNTER_API_URL || "";
-js=js.replace('const API_BASE = "";', 'const API_BASE = '+JSON.stringify(api)+';');
+js=js.replace('let API_BASE = localStorage.getItem("bugHunterApiUrl") || "";', 'let API_BASE = localStorage.getItem("bugHunterApiUrl") || '+JSON.stringify(api)+';');
 await writeFile(p,js);
 console.log("Built mobile web assets. API configured:", Boolean(api));
