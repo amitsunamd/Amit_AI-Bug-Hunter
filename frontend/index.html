@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101827"><meta name="description" content="Authorized website health checks">
+<link rel="manifest" href="./manifest.webmanifest"><link rel="stylesheet" href="./style.css">
+<title>AI Bug Hunter</title>
+</head>
+<body>
+<header class="topbar"><div class="logo">⌘</div><div><b>AI Bug Hunter</b><small>Website & Android testing toolkit</small></div><span class="ready">● Ready</span></header>
+<main class="wrap">
+<section class="hero"><p class="eyebrow">SECURITY · QUALITY · REPORTING</p><h1>Find issues.<br><span>Fix with confidence.</span></h1><p class="muted">Run a lightweight, non-invasive check on a website you own or are authorized to test.</p></section>
+<section class="panel">
+<div class="heading"><div><p class="eyebrow">NEW SCAN</p><h2>Website scanner</h2></div><span class="tag">Safe mode</span></div>
+<label for="targetUrl">Website URL</label><input id="targetUrl" type="url" placeholder="https://example.com">
+<label class="consent"><input id="authorized" type="checkbox"> I own this website or have explicit permission to test it.</label>
+<button id="scanButton" class="primary">Start website scan <span>→</span></button><p id="message" class="message" role="status">Backend connection will be configured after deployment.</p>
+</section>
+<section id="results" class="hidden">
+<div class="heading"><h2 id="resultTitle">Scan report</h2><button id="downloadJson" class="secondary" disabled>Export JSON</button></div>
+<div class="stats"><div><b id="totalCount">0</b><small>Total</small></div><div><b id="highCount">0</b><small>High</small></div><div><b id="mediumCount">0</b><small>Medium</small></div><div><b id="lowCount">0</b><small>Low</small></div></div>
+<div id="issueList"></div><h3>Same-site links checked</h3><div id="linkList"></div><p class="muted tiny">Automated findings are indicators, not proof. Manually verify each result.</p>
+</section>
+<section class="panel"><h2>Checks in this version</h2><div class="features"><div>↗ <b>HTTP status</b><small>Server response</small></div><div>⌁ <b>Security headers</b><small>Browser protections</small></div><div>◎ <b>HTML quality</b><small>Title and image alt</small></div><div>⌕ <b>Forms</b><small>Basic password signals</small></div><div>⇄ <b>Broken links</b><small>Same-site sample</small></div><div>▣ <b>Mixed content</b><small>HTTP resources</small></div></div></section>
+<footer>AI Bug Hunter · Early development build · Authorized testing only</footer>
+</main><script src="./app.js"></script>
+</body></html>
