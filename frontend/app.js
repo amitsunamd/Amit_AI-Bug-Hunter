@@ -33,6 +33,7 @@ $("scanButton").addEventListener("click",async()=>{
  if(!url)return message("Enter a website URL first.","error");
  if(!$("authorized").checked)return message("Confirm that you own this site or have permission.","error");
  try{const parsed=new URL(url);if(!["http:","https:"].includes(parsed.protocol))throw Error("Only HTTP and HTTPS URLs are supported.");}catch(e){return message(e.message||"Enter a valid URL.","error");}
+ API_BASE=(localStorage.getItem("bugHunterApiUrl")||"").trim().replace(/\/$/,"");
  if(!API_BASE)return message("Add your deployed backend URL above and tap Save.","error");
  const btn=$("scanButton");btn.disabled=true;btn.textContent="Scanning…";message("Scanning authorized public page…");
  try{const response=await fetch(API_BASE.replace(/\/$/,"")+"/api/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,authorized:true})});const data=await response.json();if(!response.ok)throw Error(data.detail||"Scan failed.");render(data);message("Scan complete. Manually verify findings.","success");}
