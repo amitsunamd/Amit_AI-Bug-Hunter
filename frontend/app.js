@@ -168,6 +168,6 @@ $("emailReport").addEventListener("click",()=>{
  window.location.href=href;
 });
 restore();
-if("serviceWorker" in navigator&&location.protocol.startsWith("http"))window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+// Service worker disabled to prevent stale scanner JavaScript from being cached.
 const apiStatus=$("apiMessage");
 if(API_BASE&&apiStatus){apiStatus.textContent="Saved backend URL: "+API_BASE;apiStatus.className="message";}
