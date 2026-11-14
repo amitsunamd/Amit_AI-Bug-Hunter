@@ -54,3 +54,15 @@ def test_duplicate_finding_collects_affected_pages():
     assert findings[0]["affected_urls"] == [
         "https://example.com/", "https://example.com/about"
     ]
+
+
+from main import redact_url
+
+
+def test_redacts_sensitive_download_query_parameters():
+    url = "https://example.com/download/?key=private123&file=public.pdf&access_token=abc"
+    safe = redact_url(url)
+    assert "private123" not in safe
+    assert "abc" not in safe
+    assert "file=public.pdf" in safe
+    assert "key=%5BREDACTED%5D" in safe
