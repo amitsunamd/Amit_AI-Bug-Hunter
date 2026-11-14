@@ -8,3 +8,5 @@
 .history-item{width:100%;display:flex;align-items:center;text-align:left;color:var(--text);background:transparent;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:11px 2px}.history-item:hover{background:#1b2b45}.history-item span{min-width:0}.history-item small{overflow-wrap:anywhere}.history-item b:last-child{color:#9dc1ff}@media print{.history-item{display:none!important}}
 
 .email-panel textarea{width:100%;resize:vertical;min-height:280px;border:1px solid #344762;border-radius:12px;padding:13px;background:#0a1424;color:var(--text);font:12px/1.55 ui-monospace,monospace}.email-panel input[readonly]{color:#cfe0ff}.email-panel .report-actions{margin-top:12px}.email-panel .primary{width:auto;margin-top:0;flex:1}.email-panel .secondary{flex:1}
+
+input[type=number]{width:100%;border:1px solid #344762;border-radius:12px;padding:15px;background:#0a1424;color:var(--text);font:inherit}
