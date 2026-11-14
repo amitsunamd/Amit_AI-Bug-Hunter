@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import ipaddress
 import socket
-from collections import Counter
+import time
+from collections import Counter, deque
 from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse, urlunparse
 
@@ -11,8 +13,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="AI Bug Hunter API", version="0.1.0",
-              description="Consent-based, non-invasive website checks.")
+app = FastAPI(
+    title="AI Bug Hunter API",
+    version="0.2.0",
+    description="Consent-based, bounded, non-invasive website checks.",
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,13 +27,20 @@ app.add_middleware(
     expose_headers=["*"],
     max_age=86400,
 )
-TIMEOUT = 8
-MAX_LINKS = 20
-UA = "Amit-AI-Bug-Hunter/0.1 (authorized non-invasive checker)"
+
+TIMEOUT = 7
+MAX_BODY_BYTES = 1_500_000
+DEFAULT_MAX_PAGES = 30
+HARD_MAX_PAGES = 100
+CRAWL_DELAY = 0.12
+UA = "Amit-AI-Bug-Hunter/0.2 (authorized non-invasive checker)"
+
 
 class ScanRequest(BaseModel):
     url: str = Field(min_length=8, max_length=2048)
     authorized: bool = False
+    max_pages: int = Field(default=DEFAULT_MAX_PAGES, ge=1, le=HARD_MAX_PAGES)
+
 
 def validate_url(raw: str, expected_host: str | None = None) -> str:
     p = urlparse(raw.strip())
@@ -45,39 +57,214 @@ def validate_url(raw: str, expected_host: str | None = None) -> str:
         ips = {ipaddress.ip_address(host)}
     except ValueError:
         try:
-            ips = {ipaddress.ip_address(x[4][0]) for x in
-                   socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)}
+            ips = {
+                ipaddress.ip_address(x[4][0])
+                for x in socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+            }
         except socket.gaierror as exc:
             raise ValueError("Hostname could not be resolved.") from exc
     if not ips or any(not ip.is_global for ip in ips):
         raise ValueError("Private or non-public IP addresses are blocked.")
     return urlunparse((p.scheme, p.netloc, p.path or "/", p.params, p.query, ""))
 
+
 def safe_get(url: str, host: str) -> requests.Response:
     current = validate_url(url, host)
     session = requests.Session()
     session.headers["User-Agent"] = UA
     for _ in range(4):
-        r = session.get(current, timeout=TIMEOUT, allow_redirects=False)
-        if r.status_code not in (301, 302, 303, 307, 308):
-            return r
-        loc = r.headers.get("Location")
-        if not loc:
-            return r
-        current = validate_url(urljoin(current, loc), host)
+        current = validate_url(current, host)
+        response = session.get(
+            current, timeout=TIMEOUT, allow_redirects=False, stream=True
+        )
+        if response.status_code in (301, 302, 303, 307, 308):
+            location = response.headers.get("Location")
+            response.close()
+            if not location:
+                return response
+            current = validate_url(urljoin(current, location), host)
+            continue
+        # Bound memory use even when a target returns a very large page.
+        chunks = []
+        size = 0
+        try:
+            for chunk in response.iter_content(chunk_size=65536):
+                if not chunk:
+                    continue
+                remaining = MAX_BODY_BYTES - size
+                if remaining <= 0:
+                    break
+                chunks.append(chunk[:remaining])
+                size += min(len(chunk), remaining)
+                if size >= MAX_BODY_BYTES:
+                    break
+            response._content = b"".join(chunks)
+            response._content_consumed = True
+        finally:
+            response.close()
+        return response
     raise ValueError("Too many redirects.")
 
-def issue(out, severity, category, title, details, fix):
-    out.append({"severity": severity, "category": category, "title": title,
-                "details": details, "recommendation": fix})
+
+def issue(out, severity, category, title, details, fix, url=None):
+    out.append({
+        "severity": severity,
+        "category": category,
+        "title": title,
+        "details": details,
+        "recommendation": fix,
+        "url": url,
+    })
+
+
+def add_unique_issue(out, seen, severity, category, title, details, fix, url):
+    key = (severity, category, title)
+    if key in seen:
+        for existing in out:
+            if (existing["severity"], existing["category"], existing["title"]) == key:
+                if url and url not in existing.setdefault("affected_urls", []):
+                    existing["affected_urls"].append(url)
+                return
+    seen.add(key)
+    item = {
+        "severity": severity, "category": category, "title": title,
+        "details": details, "recommendation": fix, "url": url,
+        "affected_urls": [url] if url else [],
+    }
+    out.append(item)
+
+
+def page_audit(response, page_url, issues, seen):
+    headers = {k.lower(): v for k, v in response.headers.items()}
+    status = response.status_code
+    if status >= 500:
+        add_unique_issue(issues, seen, "high", "Availability",
+            f"Server returned HTTP {status}", "The server returned a 5xx response.",
+            "Review server logs and upstream services.", page_url)
+    elif status >= 400:
+        add_unique_issue(issues, seen, "medium", "Availability",
+            f"Page returned HTTP {status}", "The requested page returned an error status.",
+            "Check the URL and server routing.", page_url)
+
+    checks = {
+        "content-security-policy": ("medium", "Define a suitable Content-Security-Policy."),
+        "x-content-type-options": ("low", "Set X-Content-Type-Options: nosniff."),
+        "referrer-policy": ("low", "Set a privacy-conscious Referrer-Policy."),
+        "strict-transport-security": ("medium", "Enable HSTS after confirming HTTPS works."),
+    }
+    for header, (severity, fix) in checks.items():
+        if header not in headers:
+            add_unique_issue(issues, seen, severity, "Security headers",
+                f"Missing {header}", "The response did not include this common security header.",
+                fix, page_url)
+
+    csp = headers.get("content-security-policy", "")
+    if csp:
+        csp_lower = csp.lower()
+        if "'unsafe-inline'" in csp_lower or "'unsafe-eval'" in csp_lower:
+            add_unique_issue(issues, seen, "medium", "Content Security Policy",
+                "CSP allows unsafe script execution",
+                "The Content-Security-Policy contains unsafe-inline or unsafe-eval. This can weaken script injection protections; verify whether the directive is required.",
+                "Prefer nonce- or hash-based script allowances and remove unsafe-eval where possible.",
+                page_url)
+        if "default-src" not in csp_lower and "script-src" not in csp_lower:
+            add_unique_issue(issues, seen, "low", "Content Security Policy",
+                "CSP has no default-src or script-src directive",
+                "A policy exists but does not define a clear default or script source restriction.",
+                "Review the policy and define restrictive default-src and script-src directives.",
+                page_url)
+
+    set_cookies = response.raw.headers.getlist("Set-Cookie") if hasattr(response.raw, "headers") else []
+    for cookie in set_cookies:
+        lower = cookie.lower()
+        cookie_name = cookie.split("=", 1)[0].strip()[:80]
+        if page_url.startswith("https://") and "secure" not in lower:
+            add_unique_issue(issues, seen, "low", "Cookie security",
+                "Cookie missing Secure attribute",
+                f"The response sets cookie '{cookie_name}' without a Secure attribute.",
+                "Set Secure on cookies that should only be sent over HTTPS.", page_url)
+        if "httponly" not in lower:
+            add_unique_issue(issues, seen, "low", "Cookie security",
+                "Cookie missing HttpOnly attribute",
+                f"The response sets cookie '{cookie_name}' without HttpOnly.",
+                "Set HttpOnly on session and other sensitive cookies not needed by JavaScript.", page_url)
+        if "samesite" not in lower:
+            add_unique_issue(issues, seen, "low", "Cookie security",
+                "Cookie missing SameSite attribute",
+                f"The response sets cookie '{cookie_name}' without SameSite.",
+                "Set an appropriate SameSite=Lax or Strict attribute; use None only when cross-site use is required and Secure is set.",
+                page_url)
+
+    if headers.get("access-control-allow-origin", "").strip() == "*":
+        add_unique_issue(issues, seen, "low", "CORS",
+            "CORS allows every origin",
+            "The response advertises Access-Control-Allow-Origin: *. This may be intentional for public resources but should be reviewed for sensitive endpoints.",
+            "Restrict allowed origins to trusted sites when the endpoint returns user-specific or sensitive data.",
+            page_url)
+
+    if headers.get("server"):
+        add_unique_issue(issues, seen, "info", "Information disclosure",
+            "Server technology banner is exposed",
+            "The response includes a Server header. This is not automatically a vulnerability but may disclose implementation details.",
+            "Consider minimizing unnecessary version details in server response headers.", page_url)
+    if headers.get("x-powered-by"):
+        add_unique_issue(issues, seen, "info", "Information disclosure",
+            "X-Powered-By header is exposed",
+            "The response includes an X-Powered-By header that may reveal application technology.",
+            "Remove unnecessary technology-identifying response headers.", page_url)
+
+    is_html = "text/html" in headers.get("content-type", "").lower()
+    soup = BeautifulSoup(response.text if is_html else "", "html.parser")
+    title = soup.title.get_text(" ", strip=True) if soup.title else ""
+    if is_html and not title:
+        add_unique_issue(issues, seen, "low", "HTML quality", "Page title missing",
+            "No non-empty HTML title was found.", "Add a descriptive title element.", page_url)
+    if is_html and not soup.find("meta", attrs={"name": "description"}):
+        add_unique_issue(issues, seen, "info", "SEO", "Meta description missing",
+            "No meta description was found.", "Add a concise page-specific description if appropriate.", page_url)
+    if is_html:
+        for img in soup.find_all("img"):
+            if not img.has_attr("alt"):
+                add_unique_issue(issues, seen, "low", "Accessibility", "Image missing alt attribute",
+                    "At least one image has no alt attribute.",
+                    "Add descriptive alt text or an empty alt for decorative images.", page_url)
+                break
+        for form in soup.find_all("form"):
+            passwords = form.find_all("input", attrs={"type": "password"})
+            method = (form.get("method") or "get").lower()
+            action = urljoin(page_url, form.get("action") or page_url)
+            if passwords and page_url.startswith("http://"):
+                add_unique_issue(issues, seen, "high", "Transport security", "Password form on HTTP",
+                    "A password field appears on a non-HTTPS page.",
+                    "Serve authentication pages over HTTPS only.", page_url)
+            if passwords and method == "get":
+                add_unique_issue(issues, seen, "high", "Form security", "Password form uses GET",
+                    "A password form appears to use the GET method.",
+                    "Use POST over HTTPS for credential submission.", page_url)
+            if passwords and urlparse(action).scheme == "http":
+                add_unique_issue(issues, seen, "high", "Transport security", "Password form submits over HTTP",
+                    "A password form action points to an insecure HTTP URL.",
+                    "Submit credentials only to an HTTPS endpoint.", page_url)
+        if page_url.startswith("https://"):
+            for el in soup.find_all(src=True):
+                if str(el.get("src", "")).strip().lower().startswith("http://"):
+                    add_unique_issue(issues, seen, "medium", "Mixed content",
+                        "HTTP resource on HTTPS page",
+                        "At least one resource uses an insecure HTTP URL.",
+                        "Load page resources over HTTPS.", page_url)
+                    break
+    return soup, title
+
 
 @app.get("/")
 def root():
     return {"name": "AI Bug Hunter API", "status": "online", "docs": "/docs"}
 
+
 @app.get("/health")
 def health():
     return {"status": "ok", "version": app.version}
+
 
 @app.post("/api/scan")
 def scan(req: ScanRequest):
@@ -89,105 +276,79 @@ def scan(req: ScanRequest):
             raise ValueError("Enter a complete URL such as https://example.com")
         host = parsed.hostname.rstrip(".").lower()
         target = validate_url(req.url, host)
-        response = safe_get(target, host)
+        first_response = safe_get(target, host)
     except (ValueError, requests.RequestException) as exc:
         raise HTTPException(400, str(exc)) from exc
 
     issues = []
-    headers = {k.lower(): v for k, v in response.headers.items()}
-    status = response.status_code
-    if status >= 500:
-        issue(issues, "high", "Availability", f"Server returned HTTP {status}",
-              "The server returned a 5xx response.", "Review server logs and upstream services.")
-    elif status >= 400:
-        issue(issues, "medium", "Availability", f"Page returned HTTP {status}",
-              "The requested page returned an error status.", "Check the URL and server routing.")
+    seen_issues = set()
+    links_seen = set()
+    pages_seen = set()
+    queue = deque([target])
+    page_results = []
+    first_title = ""
+    first_status = first_response.status_code
+    first_content_type = first_response.headers.get("Content-Type", "")
 
-    checks = {
-        "content-security-policy": ("medium", "Define a suitable Content-Security-Policy."),
-        "x-content-type-options": ("low", "Set X-Content-Type-Options: nosniff."),
-        "referrer-policy": ("low", "Set a privacy-conscious Referrer-Policy."),
-        "strict-transport-security": ("medium", "Enable HSTS after confirming HTTPS works."),
-    }
-    for header, (severity, fix) in checks.items():
-        if header not in headers:
-            issue(issues, severity, "Security headers", f"Missing {header}",
-                  "The response did not include this common security header.",
-                  fix)
-
-    html = "text/html" in headers.get("content-type", "").lower()
-    soup = BeautifulSoup(response.text[:1500000] if html else "", "html.parser")
-    title = soup.title.get_text(" ", strip=True) if soup.title else ""
-    if html and not title:
-        issue(issues, "low", "HTML quality", "Page title missing",
-              "No non-empty HTML title was found.", "Add a descriptive title element.")
-    if html and not soup.find("meta", attrs={"name": "description"}):
-        issue(issues, "info", "SEO", "Meta description missing",
-              "No meta description was found.", "Add a concise description if appropriate.")
-    if html:
-        for img in soup.find_all("img"):
-            if not img.has_attr("alt"):
-                issue(issues, "low", "Accessibility", "Image missing alt attribute",
-                      "At least one image has no alt attribute.",
-                      "Add descriptive alt text or an empty alt for decorative images.")
-                break
-        for form in soup.find_all("form"):
-            passwords = form.find_all("input", attrs={"type": "password"})
-            method = (form.get("method") or "get").lower()
-            if passwords and target.startswith("http://"):
-                issue(issues, "high", "Transport security", "Password form on HTTP",
-                      "A password field appears on a non-HTTPS page.",
-                      "Serve authentication pages over HTTPS only.")
-            if passwords and method == "get":
-                issue(issues, "high", "Form security", "Password form uses GET",
-                      "A password form appears to use the GET method.",
-                      "Use POST over HTTPS for credential submission.")
-        if target.startswith("https://"):
-            for el in soup.find_all(src=True):
-                if str(el.get("src", "")).startswith("http://"):
-                    issue(issues, "medium", "Mixed content", "HTTP resource on HTTPS page",
-                          "At least one resource uses an insecure HTTP URL.",
-                          "Load page resources over HTTPS.")
-                    break
-
-    links, seen = [], set()
-    for a in soup.find_all("a", href=True):
-        candidate = urljoin(target, a["href"])
-        cp = urlparse(candidate)
-        if cp.hostname and cp.hostname.lower().rstrip(".") == host and cp.scheme in ("http", "https"):
-            try:
-                candidate = validate_url(candidate, host)
-            except ValueError:
-                continue
-            if candidate not in seen:
-                links.append(candidate)
-                seen.add(candidate)
-        if len(links) >= MAX_LINKS:
-            break
-
-    link_results = []
-    for link in links:
+    while queue and len(pages_seen) < req.max_pages:
+        page_url = queue.popleft()
+        if page_url in pages_seen:
+            continue
+        pages_seen.add(page_url)
         try:
-            r = safe_get(link, host)
-            link_results.append({"url": link, "status": r.status_code})
-            if r.status_code >= 400:
-                issue(issues, "low", "Broken link", f"Same-site link returned HTTP {r.status_code}",
-                      link, "Update the link or restore the destination.")
+            response = first_response if page_url == target else safe_get(page_url, host)
+            soup, title = page_audit(response, page_url, issues, seen_issues)
+            if page_url == target:
+                first_title = title
+            page_results.append({"url": page_url, "status": response.status_code, "title": title})
+            for anchor in soup.find_all("a", href=True):
+                candidate = urljoin(page_url, anchor["href"])
+                cp = urlparse(candidate)
+                if not cp.hostname or cp.hostname.lower().rstrip(".") != host:
+                    continue
+                if cp.scheme not in ("http", "https"):
+                    continue
+                try:
+                    candidate = validate_url(candidate, host)
+                except ValueError:
+                    continue
+                # Drop fragments and avoid crawling common non-page assets.
+                path = urlparse(candidate).path.lower()
+                if path.endswith((".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg",
+                                  ".pdf", ".zip", ".gz", ".mp4", ".mp3", ".css", ".js",
+                                  ".ico", ".woff", ".woff2", ".ttf")):
+                    continue
+                if candidate not in links_seen:
+                    links_seen.add(candidate)
+                    if candidate not in pages_seen and len(pages_seen) + len(queue) < req.max_pages:
+                        queue.append(candidate)
+            time.sleep(CRAWL_DELAY)
         except (ValueError, requests.RequestException) as exc:
-            link_results.append({"url": link, "error": str(exc)})
+            page_results.append({"url": page_url, "error": str(exc)})
 
     counts = Counter(x["severity"] for x in issues)
     return {
-        "target": target, "http_status": status, "page_title": title,
+        "target": target,
+        "http_status": first_status,
+        "page_title": first_title,
         "checked_at": datetime.now(timezone.utc).isoformat(),
-        "summary": {"total_issues": len(issues), "high": counts["high"],
-                    "medium": counts["medium"], "low": counts["low"],
-                    "info": counts["info"], "links_checked": len(link_results)},
-        "issues": issues, "links": link_results,
+        "pages_checked": len([x for x in page_results if "status" in x]),
+        "max_pages": req.max_pages,
+        "pages": page_results,
+        "summary": {
+            "total_issues": len(issues), "high": counts["high"],
+            "medium": counts["medium"], "low": counts["low"],
+            "info": counts["info"], "links_checked": len(page_results),
+            "pages_checked": len([x for x in page_results if "status" in x]),
+        },
+        "issues": issues,
+        "links": page_results,
         "limitations": [
-            "Basic non-invasive checks only; not a penetration test.",
-            "Only a small sample of same-host links is checked.",
-            "Heuristic findings require manual verification.",
-            "Only scan systems you own or are explicitly authorized to test."
-        ]
+            "Bounded, non-invasive crawl of same-host HTML pages only.",
+            "Maximum page count is capped at 100 and response bodies at 1.5 MB per page.",
+            "Cookie, CORS and header observations require manual context and may be intentional.",
+            "No exploitation, brute force, login bypass, authenticated testing or destructive requests are performed.",
+            "This is not a penetration test; findings are heuristic indicators requiring manual validation.",
+            "Only scan systems you own or are explicitly authorized to assess.",
+        ],
     }
