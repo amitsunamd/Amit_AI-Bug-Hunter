@@ -5,7 +5,7 @@ import socket
 import time
 from collections import Counter, deque
 from datetime import datetime, timezone
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -34,6 +34,34 @@ DEFAULT_MAX_PAGES = 30
 HARD_MAX_PAGES = 100
 CRAWL_DELAY = 0.12
 UA = "Amit-AI-Bug-Hunter/0.2 (authorized non-invasive checker)"
+
+
+class CrossHostRedirectBlocked(ValueError):
+    """A redirect was intentionally not followed because it leaves the scan host."""
+
+
+SENSITIVE_QUERY_KEYS = {
+    "key", "token", "access_token", "refresh_token", "api_key", "apikey",
+    "secret", "password", "passwd", "signature", "sig", "session",
+    "sessionid", "auth", "authorization", "code",
+}
+
+
+def redact_url(raw: str) -> str:
+    """Keep useful URL context while hiding likely secrets in query parameters."""
+    try:
+        parts = urlparse(raw)
+        safe_query = []
+        for key, value in parse_qsl(parts.query, keep_blank_values=True):
+            if key.lower() in SENSITIVE_QUERY_KEYS or any(
+                marker in key.lower() for marker in ("token", "secret", "password", "signature")
+            ):
+                value = "[REDACTED]"
+            safe_query.append((key, value))
+        return urlunparse((parts.scheme, parts.netloc, parts.path, parts.params,
+                           urlencode(safe_query), ""))
+    except Exception:
+        return "[URL REDACTED]"
 
 
 class ScanRequest(BaseModel):
@@ -85,7 +113,13 @@ def safe_get(url: str, host: str) -> requests.Response:
                 response.close()
                 return response
             response.close()
-            current = validate_url(urljoin(current, location), host)
+            redirected = urljoin(current, location)
+            try:
+                current = validate_url(redirected, host)
+            except ValueError as exc:
+                if "Cross-host redirects are blocked" in str(exc):
+                    raise CrossHostRedirectBlocked(str(exc)) from exc
+                raise
             continue
         # Bound memory use even when a target returns a very large page.
         chunks = []
@@ -125,14 +159,15 @@ def add_unique_issue(out, seen, severity, category, title, details, fix, url):
     if key in seen:
         for existing in out:
             if (existing["severity"], existing["category"], existing["title"]) == key:
-                if url and url not in existing.setdefault("affected_urls", []):
-                    existing["affected_urls"].append(url)
+                safe_url = redact_url(url) if url else None
+                if safe_url and safe_url not in existing.setdefault("affected_urls", []):
+                    existing["affected_urls"].append(safe_url)
                 return
     seen.add(key)
     item = {
         "severity": severity, "category": category, "title": title,
-        "details": details, "recommendation": fix, "url": url,
-        "affected_urls": [url] if url else [],
+        "details": details, "recommendation": fix, "url": redact_url(url) if url else None,
+        "affected_urls": [redact_url(url)] if url else [],
     }
     out.append(item)
 
@@ -305,7 +340,7 @@ def scan(req: ScanRequest):
             soup, title = page_audit(response, page_url, issues, seen_issues)
             if page_url == target:
                 first_title = title
-            page_results.append({"url": page_url, "status": response.status_code, "title": title})
+            page_results.append({"url": redact_url(page_url), "status": response.status_code, "title": title})
             for anchor in soup.find_all("a", href=True):
                 candidate = urljoin(page_url, anchor["href"])
                 cp = urlparse(candidate)
@@ -328,12 +363,24 @@ def scan(req: ScanRequest):
                     if candidate not in pages_seen and len(pages_seen) + len(queue) < req.max_pages:
                         queue.append(candidate)
             time.sleep(CRAWL_DELAY)
+        except CrossHostRedirectBlocked:
+            add_unique_issue(
+                issues, seen_issues, "info", "Scan limitation",
+                "Cross-host redirect not followed",
+                "This page redirects to a different hostname. The scanner intentionally stopped at the host boundary; this does not by itself indicate a broken link or vulnerability.",
+                "Open the page in a normal browser and verify the final destination. If the destination is expected and trusted, record it as an external redirect rather than a scanner failure.",
+                page_url,
+            )
+            page_results.append({
+                "url": redact_url(page_url),
+                "note": "Cross-host redirect blocked; destination not followed",
+            })
         except (ValueError, requests.RequestException) as exc:
-            page_results.append({"url": page_url, "error": str(exc)})
+            page_results.append({"url": redact_url(page_url), "error": str(exc)})
 
     counts = Counter(x["severity"] for x in issues)
     return {
-        "target": target,
+        "target": redact_url(target),
         "http_status": first_status,
         "page_title": first_title,
         "checked_at": datetime.now(timezone.utc).isoformat(),
