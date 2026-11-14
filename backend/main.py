@@ -79,9 +79,12 @@ def safe_get(url: str, host: str) -> requests.Response:
         )
         if response.status_code in (301, 302, 303, 307, 308):
             location = response.headers.get("Location")
-            response.close()
             if not location:
+                response._content = b""
+                response._content_consumed = True
+                response.close()
                 return response
+            response.close()
             current = validate_url(urljoin(current, location), host)
             continue
         # Bound memory use even when a target returns a very large page.
