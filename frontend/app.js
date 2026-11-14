@@ -57,7 +57,7 @@ $("totalCount").textContent=s.total_issues??issues.length;
  const pageCount=data.pages_checked??s.pages_checked??0;
  const pageNote=$("pagesChecked");if(pageNote)pageNote.textContent=pageCount+" pages checked · limit "+(data.max_pages||"—");
  $("highCount").textContent=s.high??0;$("mediumCount").textContent=s.medium??0;$("lowCount").textContent=s.low??0;
- $("issueList").innerHTML=issues.length?issues.map(x=>'<article class="issue '+safe(x.severity)+'"><h3>'+safe(String(x.title||"Finding"))+' · '+safe(x.severity||"Unclassified")+'</h3><p><b>Category:</b> '+safe(x.category||"General")+'</p><p><b>Observation:</b> '+safe(x.details||"No further detail supplied.")+'</p><p class="fix"><b>Recommended remediation:</b> '+safe(x.recommendation||"Review the affected configuration.")+'</p><p class="fix"><b>Implementation guidance:</b> '+safe(detailedFix(x))+'</p><p class="tiny muted">Validate manually before treating this as a confirmed vulnerability.</p></article>').join(""):'<article class="issue"><h3>No issues detected by the checks performed</h3><p>This does not prove the website is vulnerability-free.</p></article>';
+ $("issueList").innerHTML=issues.length?issues.map(x=>'<article class="issue '+safe(x.severity)+'"><h3>'+safe(String(x.title||"Finding"))+' · '+safe(x.severity||"Unclassified")+'</h3><p><b>Category:</b> '+safe(x.category||"General")+'</p><p><b>Observation:</b> '+safe(x.details||"No further detail supplied.")+'</p><p class="fix"><b>Recommended remediation:</b> '+safe(x.recommendation||"Review the affected configuration.")+'</p><p class="fix"><b>Implementation guidance:</b> '+safe(detailedFix(x))+'</p><p class="tiny muted">Affected pages: '+safe((x.affected_urls||[x.url].filter(Boolean)).join(" · ")||"Not supplied")+'</p><p class="tiny muted">Validate manually before treating this as a confirmed vulnerability.</p></article>').join(""):'<article class="issue"><h3>No issues detected by the checks performed</h3><p>This does not prove the website is vulnerability-free.</p></article>';
  $("linkList").innerHTML=links.length?links.map(x=>'<div class="link">'+safe(x.url)+' <b>'+(x.status?'HTTP '+safe(x.status):safe(x.error||"Not checked"))+'</b></div>').join(""):'<div class="link">No same-site links available.</div>';
  scoreReport(data);$("downloadJson").disabled=false;$("printReport").disabled=false;refreshEmailDraft(data);
 }
@@ -83,7 +83,7 @@ window.startWebsiteScan=async function(){
   if(!response.ok)throw Error(data.detail||("Scan failed (HTTP "+response.status+")."));
   if(!data.summary||!Array.isArray(data.issues)||!Array.isArray(data.links))throw Error("Backend response format is incomplete.");
   saveReport(data);render(data);message("Scan complete. Report saved on this device.","success");
- }catch(e){message(e.name==="AbortError"?"Scan timed out after 45 seconds. Try again.":(e.message||"Could not connect to scanner."),"error");}
+ }catch(e){message(e.name==="AbortError"?"Deep scan timed out after 180 seconds. Try a smaller page limit.":(e.message||"Could not connect to scanner."),"error");}
  finally{btn.disabled=false;btn.innerHTML='Start website scan <span>→</span>';}
 };
 $("historyList").addEventListener("click",e=>{
