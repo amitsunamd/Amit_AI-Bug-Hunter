@@ -14,6 +14,11 @@ Mobile-first website quality and security-header checker, with an Android APK bu
 - Broken page status observations and affected-page evidence
 - JSON report export with sensitive query values redacted
 - External-host redirects are reported as informational scan boundaries, not broken links
+- Same-host redirect chains are recorded in page evidence
+- Pagination-aware crawl removes tracking parameters for URL identity and caps each path family at five pages
+- Duplicate-content indicators use canonical tags and visible-text fingerprints
+- Same-host links returning 4xx/5xx are explicitly reported as broken-link findings
+- Findings include confidence labels and supporting evidence
 - Security score excludes SEO, accessibility and scan-limitation observations
 - Security findings are displayed separately from website quality and scan notes
 - Backend URL can be configured in the dashboard and saved on the device
@@ -24,7 +29,7 @@ Mobile-first website quality and security-header checker, with an Android APK bu
 Only test websites you own or have explicit permission to assess. The scanner blocks local/private IP targets, non-HTTP(S) schemes, custom ports and cross-host redirects. It does not exploit vulnerabilities, brute-force accounts, bypass logins or run destructive tests. Automated results are heuristics, not proof of a vulnerability; verify manually. It is not a substitute for a professional penetration test.
 
 ## Deep scan behavior
-The dashboard lets you choose a same-origin crawl limit from 1 to 100 pages (default 30). The scanner follows HTML links on the same host, skips common static assets, caps each downloaded response body at 1.5 MB, and reports the pages it checked. Findings with the same type are grouped and list affected page URLs. Cookie, CORS and CSP observations can be intentional depending on application design and must be manually validated. The crawler does not submit forms, authenticate, exploit vulnerabilities, brute-force, or perform destructive requests.
+The dashboard lets you choose a same-origin crawl limit from 1 to 100 pages (default 30). The scanner follows HTML links on the same host, skips common static assets, caps each downloaded response body at 1.5 MB, and reports the pages it checked. Findings with the same type are grouped and list affected page URLs. Cookie, CORS and CSP observations can be intentional depending on application design and must be manually validated. The crawler removes common tracking parameters when deduplicating URL identity, preserves meaningful application query parameters, and limits each path/query family to five crawled pages to reduce runaway pagination. It checks canonical URL declarations and visible-text fingerprints for possible duplicate content; these are informational indicators and may reflect legitimate templates. Same-host links returning 4xx/5xx are reported as broken links. Same-host redirect chains are recorded, while cross-host redirects remain blocked and are shown as scan boundaries. Each finding includes a confidence label and evidence text; confidence describes observation quality, not exploitability. The crawler does not submit forms, authenticate, exploit vulnerabilities, brute-force, or perform destructive requests.
 
 ## Backend
 From `backend/`:
