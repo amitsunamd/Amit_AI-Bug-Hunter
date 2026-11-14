@@ -53,7 +53,9 @@ function render(data){
  $("results").classList.remove("hidden");
  $("resultTitle").textContent=data.page_title||data.target||"Website Security Assessment";
  const s=data.summary||{}, issues=data.issues||[], links=data.links||[];
- $("totalCount").textContent=s.total_issues??issues.length;
+$("totalCount").textContent=s.total_issues??issues.length;
+ const pageCount=data.pages_checked??s.pages_checked??0;
+ const pageNote=$("pagesChecked");if(pageNote)pageNote.textContent=pageCount+" pages checked · limit "+(data.max_pages||"—");
  $("highCount").textContent=s.high??0;$("mediumCount").textContent=s.medium??0;$("lowCount").textContent=s.low??0;
  $("issueList").innerHTML=issues.length?issues.map(x=>'<article class="issue '+safe(x.severity)+'"><h3>'+safe(String(x.title||"Finding"))+' · '+safe(x.severity||"Unclassified")+'</h3><p><b>Category:</b> '+safe(x.category||"General")+'</p><p><b>Observation:</b> '+safe(x.details||"No further detail supplied.")+'</p><p class="fix"><b>Recommended remediation:</b> '+safe(x.recommendation||"Review the affected configuration.")+'</p><p class="fix"><b>Implementation guidance:</b> '+safe(detailedFix(x))+'</p><p class="tiny muted">Validate manually before treating this as a confirmed vulnerability.</p></article>').join(""):'<article class="issue"><h3>No issues detected by the checks performed</h3><p>This does not prove the website is vulnerability-free.</p></article>';
  $("linkList").innerHTML=links.length?links.map(x=>'<div class="link">'+safe(x.url)+' <b>'+(x.status?'HTTP '+safe(x.status):safe(x.error||"Not checked"))+'</b></div>').join(""):'<div class="link">No same-site links available.</div>';
@@ -73,9 +75,9 @@ window.startWebsiteScan=async function(){
  if(!API_BASE){message("Add your deployed backend URL and tap Save.","error");return;}
  btn.disabled=true;btn.textContent="Scanning…";message("Connecting to backend and scanning. Please wait…");
  try{
-  const controller=new AbortController(), timeout=setTimeout(()=>controller.abort(),45000);
+  const controller=new AbortController(), timeout=setTimeout(()=>controller.abort(),180000);
   let response;
-  try{response=await fetch(API_BASE+"/api/scan",{method:"POST",mode:"cors",cache:"no-store",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,authorized:true}),signal:controller.signal});}
+  try{response=await fetch(API_BASE+"/api/scan",{method:"POST",mode:"cors",cache:"no-store",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,authorized:true,max_pages:Math.max(1,Math.min(100,Number($("maxPages")?.value||30)))}),signal:controller.signal});}
   finally{clearTimeout(timeout);}
   const raw=await response.text();let data;try{data=JSON.parse(raw);}catch(e){throw Error("Backend returned an unreadable response (HTTP "+response.status+").");}
   if(!response.ok)throw Error(data.detail||("Scan failed (HTTP "+response.status+")."));
