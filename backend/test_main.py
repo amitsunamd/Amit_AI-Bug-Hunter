@@ -66,3 +66,36 @@ def test_redacts_sensitive_download_query_parameters():
     assert "abc" not in safe
     assert "file=public.pdf" in safe
     assert "key=%5BREDACTED%5D" in safe
+
+
+
+from main import normalize_crawl_url, page_family, content_fingerprint
+from bs4 import BeautifulSoup
+
+
+def test_normalizer_removes_tracking_but_keeps_meaningful_query():
+    normalized = normalize_crawl_url("https://example.com/search?utm_source=news&page=2&q=finance#top")
+    assert normalized == "https://example.com/search?page=2&q=finance"
+
+
+def test_page_family_groups_pagination_but_keeps_other_filters():
+    first = page_family("https://example.com/list?ssf_paged=1&type=company")
+    later = page_family("https://example.com/list?type=company&ssf_paged=902")
+    other_filter = page_family("https://example.com/list?type=person&ssf_paged=2")
+    assert first == later
+    assert first != other_filter
+
+
+def test_content_fingerprint_ignores_whitespace_and_case():
+    one = BeautifulSoup("<p>Hello   World</p>", "html.parser")
+    two = BeautifulSoup("<p>hello\nworld</p>", "html.parser")
+    assert content_fingerprint(one) == content_fingerprint(two)
+
+
+def test_findings_include_confidence_and_evidence():
+    findings = []
+    add_unique_issue(findings, set(), "medium", "Availability",
+                     "Page returned HTTP 404", "Observed HTTP 404 response",
+                     "Restore the page", "https://example.com/missing")
+    assert findings[0]["confidence"] == "high"
+    assert findings[0]["evidence"] == "Observed HTTP 404 response"
