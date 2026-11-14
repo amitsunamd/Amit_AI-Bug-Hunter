@@ -57,7 +57,7 @@ function render(data){
  $("highCount").textContent=s.high??0;$("mediumCount").textContent=s.medium??0;$("lowCount").textContent=s.low??0;
  $("issueList").innerHTML=issues.length?issues.map(x=>'<article class="issue '+safe(x.severity)+'"><h3>'+safe(String(x.title||"Finding"))+' · '+safe(x.severity||"Unclassified")+'</h3><p><b>Category:</b> '+safe(x.category||"General")+'</p><p><b>Observation:</b> '+safe(x.details||"No further detail supplied.")+'</p><p class="fix"><b>Recommended remediation:</b> '+safe(x.recommendation||"Review the affected configuration.")+'</p><p class="fix"><b>Implementation guidance:</b> '+safe(detailedFix(x))+'</p><p class="tiny muted">Validate manually before treating this as a confirmed vulnerability.</p></article>').join(""):'<article class="issue"><h3>No issues detected by the checks performed</h3><p>This does not prove the website is vulnerability-free.</p></article>';
  $("linkList").innerHTML=links.length?links.map(x=>'<div class="link">'+safe(x.url)+' <b>'+(x.status?'HTTP '+safe(x.status):safe(x.error||"Not checked"))+'</b></div>').join(""):'<div class="link">No same-site links available.</div>';
- scoreReport(data);$("downloadJson").disabled=false;$("printReport").disabled=false;
+ scoreReport(data);$("downloadJson").disabled=false;$("printReport").disabled=false;refreshEmailDraft(data);
 }
 function restore(){
  const raw=storageGet("bugHunterLastReport","");
@@ -95,77 +95,75 @@ $("downloadJson").addEventListener("click",()=>{
  const u=URL.createObjectURL(blob),a=document.createElement("a");a.href=u;a.download="ai-bug-hunter-assessment.json";a.click();URL.revokeObjectURL(u);
 });
 $("printReport").addEventListener("click",()=>{if(latestReport)window.print();});
-$("emailReport").addEventListener("click",()=>{
- if(!latestReport)return;
- const to=$("emailTo").value.trim();
- if(!to||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)){$("emailMessage").textContent="Enter a valid recipient email address.";return;}
- const d=latestReport,s=d.summary||{},issues=d.issues||[],links=d.links||[];
- const score=$("securityScore").textContent,grade=$("securityGrade").textContent;
- const date=d.checked_at?new Date(d.checked_at).toLocaleString():"Not available";
- const domain=(()=>{try{return new URL(d.target).hostname}catch(e){return d.target||"website"}})();
- const severity=["high","medium","low","info"].map(k=>k.toUpperCase()+": "+(s[k]||0)).join(" | ");
+function buildEmailDraft(d){
+ const s=d.summary||{},issues=d.issues||[],links=d.links||[];
+ const score=$(\"securityScore\").textContent,grade=$(\"securityGrade\").textContent;
+ const date=d.checked_at?new Date(d.checked_at).toLocaleString():\"Not available\";
+ const domain=(()=>{try{return new URL(d.target).hostname}catch(e){return d.target||\"website\"}})();
+ const severity=[\"high\",\"medium\",\"low\",\"info\"].map(k=>k.toUpperCase()+\": \"+(s[k]||0)).join(\" | \");
  const lines=[
- "CONFIDENTIAL — PROFESSIONAL WEBSITE SECURITY ASSESSMENT",
- "Prepared by AI Bug Hunter",
- "",
- "1. EXECUTIVE SUMMARY",
- "Assessed website: "+(d.target||"N/A"),
- "Page title: "+(d.page_title||"N/A"),
- "Assessment date (UTC): "+date,
- "HTTP response status: "+(d.http_status||"Not available"),
- "Total observations: "+(s.total_issues??issues.length),
- "Finding distribution: "+severity,
- "Indicative security score: "+score+" | "+grade,
- "",
- "Executive assessment: This report records the results of an authorized, lightweight, non-invasive automated review of the publicly accessible page and a limited sample of same-site links. Findings are observations requiring manual validation, not confirmed exploitability.",
- "",
- "2. FINDINGS, RISK AND REMEDIATION",
+ \"Dear IT / Website Team,\",\"\",
+ \"Please find the professional website security and quality assessment summary for \"+(d.target||\"the assessed website\")+\". The review was performed using AI Bug Hunter.\",\"\",
+ \"ASSESSMENT SUMMARY\",
+ \"• Website: \"+(d.target||\"N/A\"),
+ \"• Page title: \"+(d.page_title||\"N/A\"),
+ \"• Assessment date: \"+date,
+ \"• HTTP status: \"+(d.http_status||\"Not available\"),
+ \"• Observations: \"+(s.total_issues??issues.length),
+ \"• Severity: \"+severity,
+ \"• Indicative score: \"+score+\" (\"+grade+\")\",\"\",
+ \"IDENTIFIED FINDINGS\"
  ];
  if(issues.length){
-  issues.forEach((x,i)=>lines.push([
-   "Finding "+(i+1)+": "+String(x.title||"Untitled").toUpperCase(),
-   "Severity: "+String(x.severity||"Unclassified").toUpperCase(),
-   "Category: "+(x.category||"General"),
-   "Observation: "+(x.details||"No detail provided."),
-   "Recommended action: "+(x.recommendation||"Review and remediate the affected configuration."),
-   "Implementation guidance: "+detailedFix(x),
-   "Validation: Re-test the affected page/configuration after remediation.",
-   ""
-  ].join("\\n")));
- }else{
-  lines.push("No findings were returned by the checks performed. This does not establish that the website is free of security weaknesses.","");
- }
- lines.push("3. LINK AVAILABILITY SAMPLE");
- if(links.length){
-  links.forEach((x,i)=>lines.push((i+1)+". "+x.url+" — "+(x.status?"HTTP "+x.status:(x.error||"Not checked"))));
- }else{
-  lines.push("No same-site links were available for sampling.");
- }
- lines.push("",
- "4. SCOPE AND METHODOLOGY",
- "Checks included HTTP response status, selected security headers, basic HTML title/meta description and image-alt checks, basic password-form signals, mixed-content indicators and a limited sample of same-host links.",
- "The scan did not perform exploitation, authenticated testing, source-code review, infrastructure assessment, configuration auditing or a comprehensive penetration test.",
- "",
- "5. PRIORITIZED ACTION PLAN",
- "1) Validate all High and Medium observations immediately.",
- "2) Assign an owner and target date for each confirmed issue.",
- "3) Apply changes in a test environment and check for regressions.",
- "4) Re-run the assessment and retain before/after evidence.",
- "",
- "6. SCORE INTERPRETATION",
- "The score is a simple heuristic based on finding severity counts. Grade bands: A 95–100; B 85–94; C 70–84; D 50–69; F below 50. It is not a recognized certification, compliance rating or guarantee of security.",
- "",
- "7. LIMITATIONS AND AUTHORIZATION",
- "Automated checks can produce false positives and miss issues. Results must be reviewed by a qualified person. This report is intended only for systems owned by the recipient or explicitly authorized for testing.",
- "",
- "Prepared by: AI Bug Hunter",
- "Generated: "+new Date().toLocaleString(),
- "END OF REPORT"
-  );
- const subject="[Confidential Website Security Assessment] "+domain+" — "+(s.total_issues??issues.length)+" observation(s)";
- const href="mailto:"+encodeURIComponent(to)+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(lines.join("\n"));
- $("emailMessage").textContent="Professional assessment draft prepared. Review it in your email app and send it manually.";
+  issues.forEach((x,i)=>{
+   lines.push((i+1)+\". \"+String(x.title||\"Finding\").toUpperCase(),
+    \"   Severity: \"+String(x.severity||\"Unclassified\").toUpperCase(),
+    \"   Category: \"+(x.category||\"General\"),
+    \"   Observation: \"+(x.details||\"No additional details supplied.\"),
+    \"   Recommended action: \"+(x.recommendation||\"Review the affected configuration.\"),
+    \"   Implementation guidance: \"+detailedFix(x),
+    \"   Validation: Re-test after remediation.\",\"\");
+  });
+ }else lines.push(\"No findings were returned by the checks performed. This is not proof that the website is free of weaknesses.\",\"\");
+ lines.push(\"LINK AVAILABILITY SAMPLE\");
+ if(links.length) links.forEach((x,i)=>lines.push((i+1)+\". \"+x.url+\" — \"+(x.status?\"HTTP \"+x.status:(x.error||\"Not checked\"))));
+ else lines.push(\"No same-site links were available for sampling.\");
+ lines.push(\"\", \"RECOMMENDED NEXT STEPS\",
+  \"1. Manually validate each observation and confirm its business impact.\",
+  \"2. Assign an owner and target date to each confirmed issue.\",
+  \"3. Apply fixes in a test environment and check for regressions.\",
+  \"4. Re-run the assessment and retain before-and-after evidence.\",\"\",
+  \"SCOPE AND LIMITATIONS\",
+  \"This was a lightweight, non-invasive automated review of publicly accessible pages and a limited sample of same-site links. It did not include exploitation, authenticated testing, source-code review, infrastructure assessment, configuration auditing or a comprehensive penetration test. Findings are observations requiring manual validation, not confirmed exploitability.\",
+  \"The score is a heuristic indicator, not a recognized certification, compliance rating or guarantee of security. Testing should only be performed on systems owned by the recipient or explicitly authorized for assessment.\",\"\",
+  \"We recommend reviewing the observations and arranging a follow-up assessment after any remediation.\",\"\",
+  \"Best regards,\",
+  \"AI Bug Hunter — Website Security Assessment\",
+  \"Generated: \"+new Date().toLocaleString()
+ );
+ return {subject:\"[Confidential Website Assessment] \"+domain+\" — \"+(s.total_issues??issues.length)+\" observation(s)\",body:lines.join(\"\\n\")};
+}
+function refreshEmailDraft(d){
+ if(!d)return;
+ const draft=buildEmailDraft(d);
+ $(\"emailSubject\").value=draft.subject;
+ $(\"emailBody\").value=draft.body;
+}
+$(\"emailReport\").addEventListener(\"click\",()=>{
+ if(!latestReport)return;
+ const to=$(\"emailTo\").value.trim();
+ if(!to||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(to)){$(\"emailMessage\").textContent=\"Enter a valid recipient email address.\";return;}
+ const draft=buildEmailDraft(latestReport);
+ const href=\"mailto:\"+encodeURIComponent(to)+\"?subject=\"+encodeURIComponent(draft.subject)+\"&body=\"+encodeURIComponent(draft.body);
+ $(\"emailMessage\").textContent=\"Draft opened in your email app. Review the content and send it manually.\";
  window.location.href=href;
+});
+$(\"copyEmail\").addEventListener(\"click\",async()=>{
+ if(!latestReport)return;
+ const draft=buildEmailDraft(latestReport);
+ const text=\"Subject: \"+draft.subject+\"\\n\\n\"+draft.body;
+ try{await navigator.clipboard.writeText(text);$(\"emailMessage\").textContent=\"Professional email draft copied. Paste it into your email app.\";}
+ catch(e){const box=$(\"emailBody\");box.focus();box.select();const ok=document.execCommand(\"copy\");$(\"emailMessage\").textContent=ok?\"Email body copied. Copy the subject from the field above.\":\"Select and copy the draft manually.\";}
 });
 restore();
 // Service worker disabled to prevent stale scanner JavaScript from being cached.
