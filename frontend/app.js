@@ -141,7 +141,7 @@ function buildEmailDraft(d){
   \"AI Bug Hunter — Website Security Assessment\",
   \"Generated: \"+new Date().toLocaleString()
  );
- return {subject:\"[Confidential Website Assessment] \"+domain+\" — \"+(s.total_issues??issues.length)+\" observation(s)\",body:lines.join(\"\\n\")};
+ return {subject:\"[Confidential Website Assessment] \"+domain+\" — \"+(s.total_issues??issues.length)+\" observation(s)\",body:lines.join(\"\n\")};
 }
 function refreshEmailDraft(d){
  if(!d)return;
@@ -152,7 +152,7 @@ function refreshEmailDraft(d){
 $(\"emailReport\").addEventListener(\"click\",()=>{
  if(!latestReport)return;
  const to=$(\"emailTo\").value.trim();
- if(!to||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(to)){$(\"emailMessage\").textContent=\"Enter a valid recipient email address.\";return;}
+ if(!to||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)){$(\"emailMessage\").textContent=\"Enter a valid recipient email address.\";return;}
  const draft=buildEmailDraft(latestReport);
  const href=\"mailto:\"+encodeURIComponent(to)+\"?subject=\"+encodeURIComponent(draft.subject)+\"&body=\"+encodeURIComponent(draft.body);
  $(\"emailMessage\").textContent=\"Draft opened in your email app. Review the content and send it manually.\";
@@ -161,7 +161,7 @@ $(\"emailReport\").addEventListener(\"click\",()=>{
 $(\"copyEmail\").addEventListener(\"click\",async()=>{
  if(!latestReport)return;
  const draft=buildEmailDraft(latestReport);
- const text=\"Subject: \"+draft.subject+\"\\n\\n\"+draft.body;
+ const text=\"Subject: \"+draft.subject+\"\n\n\"+draft.body;
  try{await navigator.clipboard.writeText(text);$(\"emailMessage\").textContent=\"Professional email draft copied. Paste it into your email app.\";}
  catch(e){const box=$(\"emailBody\");box.focus();box.select();const ok=document.execCommand(\"copy\");$(\"emailMessage\").textContent=ok?\"Email body copied. Copy the subject from the field above.\":\"Select and copy the draft manually.\";}
 });
