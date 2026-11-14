@@ -7,6 +7,12 @@ let latestReport = null;
 $("apiUrl").value = API_BASE;
 
 function safe(value){return String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function redactUrl(raw){
+ try{const u=new URL(String(raw));const sensitive=/(^key$|token|secret|password|passwd|signature|^sig$|session|^auth$|authorization|^code$|api.?key)/i;for(const key of [...u.searchParams.keys()])if(sensitive.test(key))u.searchParams.set(key,"[REDACTED]");return u.toString();}
+ catch(e){return String(raw||"");}
+}
+const QUALITY_CATEGORIES=new Set(["seo","html quality","accessibility","scan limitation"]);
+function isQualityFinding(issue){return QUALITY_CATEGORIES.has(String(issue.category||"").toLowerCase());}
 function message(text,kind=""){ $("message").textContent=text; $("message").className="message "+kind; }
 
 const FIX_GUIDES = {
@@ -26,12 +32,14 @@ function detailedFix(issue){
  return matched ? FIX_GUIDES[matched] : "Review the affected URL or component, reproduce the observation manually, apply the least-privilege configuration change, then re-run the scan to verify the result.";
 }
 function scoreReport(data){
- const s=data.summary||{}, total=Number(s.total_issues||0);
- const penalty=Number(s.high||0)*25+Number(s.medium||0)*12+Number(s.low||0)*5+Number(s.info||0);
+ const issues=data.issues||[];
+ const security=issues.filter(x=>!isQualityFinding(x)&&String(x.severity||"").toLowerCase()!=="info");
+ const high=security.filter(x=>x.severity==="high").length, medium=security.filter(x=>x.severity==="medium").length, low=security.filter(x=>x.severity==="low").length;
+ const total=security.length, penalty=high*25+medium*12+low*5;
  const score=Math.max(0,Math.min(100,100-penalty));
  const grade=score>=95?"A":score>=85?"B":score>=70?"C":score>=50?"D":"F";
  $("securityScore").textContent=score+"/100";$("securityGrade").textContent="Grade "+grade;
- $("scoreNote").textContent=total?total+" finding(s). Heuristic score only; not a certification or proof of security.":"No findings in the checks performed; this is not proof of security.";
+ $("scoreNote").textContent=total?total+" security finding(s) scored. SEO, accessibility, information-only and scan-limit notes are excluded. Heuristic only, not a certification.":"No scored security findings in the checks performed; this is not proof of security.";
 }
 function getHistory(){try{return JSON.parse(storageGet("bugHunterHistory","[]"))}catch(e){return []}}
 function saveReport(data){
@@ -46,7 +54,7 @@ function saveReport(data){
 }
 function renderHistory(){
  const items=getHistory();
- $("historyList").innerHTML=items.length?items.slice(0,12).map((x,i)=>'<button type="button" class="history-item" data-history-index="'+i+'"><span><b>'+safe(x.title||x.target)+'</b><small>'+safe(x.target||"")+' · '+safe(new Date(x.checked_at).toLocaleString())+'</small></span><b>'+safe(x.total)+' finding(s)</b></button>').join(""):'<p class="muted tiny">Your recent scans will appear here on this device.</p>';
+ $("historyList").innerHTML=items.length?items.slice(0,12).map((x,i)=>'<button type="button" class="history-item" data-history-index="'+i+'"><span><b>'+safe(x.title||x.target)+'</b><small>'+safe(redactUrl(x.target||""))+' · '+safe(new Date(x.checked_at).toLocaleString())+'</small></span><b>'+safe(x.total)+' finding(s)</b></button>').join(""):'<p class="muted tiny">Your recent scans will appear here on this device.</p>';
 }
 function render(data){
  latestReport=data;
@@ -57,8 +65,10 @@ $("totalCount").textContent=s.total_issues??issues.length;
  const pageCount=data.pages_checked??s.pages_checked??0;
  const pageNote=$("pagesChecked");if(pageNote)pageNote.textContent=pageCount+" pages checked · limit "+(data.max_pages||"—");
  $("highCount").textContent=s.high??0;$("mediumCount").textContent=s.medium??0;$("lowCount").textContent=s.low??0;
- $("issueList").innerHTML=issues.length?issues.map(x=>'<article class="issue '+safe(x.severity)+'"><h3>'+safe(String(x.title||"Finding"))+' · '+safe(x.severity||"Unclassified")+'</h3><p><b>Category:</b> '+safe(x.category||"General")+'</p><p><b>Observation:</b> '+safe(x.details||"No further detail supplied.")+'</p><p class="fix"><b>Recommended remediation:</b> '+safe(x.recommendation||"Review the affected configuration.")+'</p><p class="fix"><b>Implementation guidance:</b> '+safe(detailedFix(x))+'</p><p class="tiny muted">Affected pages: '+safe((x.affected_urls||[x.url].filter(Boolean)).join(" · ")||"Not supplied")+'</p><p class="tiny muted">Validate manually before treating this as a confirmed vulnerability.</p></article>').join(""):'<article class="issue"><h3>No issues detected by the checks performed</h3><p>This does not prove the website is vulnerability-free.</p></article>';
- $("linkList").innerHTML=links.length?links.map(x=>'<div class="link">'+safe(x.url)+' <b>'+(x.status?'HTTP '+safe(x.status):safe(x.error||"Not checked"))+'</b></div>').join(""):'<div class="link">No same-site links available.</div>';
+ const securityIssues=issues.filter(x=>!isQualityFinding(x)), qualityIssues=issues.filter(isQualityFinding);
+ const renderIssues=items=>items.length?items.map(x=>'<article class="issue '+safe(x.severity)+'"><h3>'+safe(String(x.title||"Finding"))+' · '+safe(x.severity||"Unclassified")+'</h3><p><b>Category:</b> '+safe(x.category||"General")+'</p><p><b>Observation:</b> '+safe(x.details||"No further detail supplied.")+'</p><p class="fix"><b>Recommended remediation:</b> '+safe(x.recommendation||"Review the affected configuration.")+'</p><p class="fix"><b>Implementation guidance:</b> '+safe(detailedFix(x))+'</p><p class="tiny muted">Affected pages: '+safe((x.affected_urls||[x.url].filter(Boolean)).map(redactUrl).join(" · ")||"Not supplied")+'</p><p class="tiny muted">Validate manually before treating this as a confirmed vulnerability.</p></article>').join(""):"<p class='muted tiny'>None reported.</p>";
+ $("issueList").innerHTML='<h3>Security findings</h3>'+renderIssues(securityIssues)+'<h3>Website quality &amp; scan notes</h3>'+renderIssues(qualityIssues);
+ $("linkList").innerHTML=links.length?links.map(x=>'<div class="link">'+safe(redactUrl(x.url))+' <b>'+(x.status?'HTTP '+safe(x.status):safe(x.note||x.error||"Not checked"))+'</b></div>').join(""):'<div class="link">No same-site links available.</div>';
  scoreReport(data);$("downloadJson").disabled=false;$("printReport").disabled=false;refreshEmailDraft(data);
 }
 function restore(){
@@ -107,13 +117,13 @@ function buildEmailDraft(d){
  "Dear IT / Website Team,","",
  "Please find the professional website security and quality assessment summary for "+(d.target||"the assessed website")+". The review was performed using AI Bug Hunter.","",
  "ASSESSMENT SUMMARY",
- "• Website: "+(d.target||"N/A"),
+ "• Website: "+redactUrl(d.target||"N/A"),
  "• Page title: "+(d.page_title||"N/A"),
  "• Assessment date: "+date,
  "• HTTP status: "+(d.http_status||"Not available"),
  "• Observations: "+(s.total_issues??issues.length),
  "• Severity: "+severity,
- "• Indicative score: "+score+" ("+grade+")","",
+ "• Indicative security score: "+score+" ("+grade+")","• Scoring excludes SEO, accessibility, information-only and scan-limitation observations.","",
  "IDENTIFIED FINDINGS"
  ];
  if(issues.length){
@@ -128,7 +138,7 @@ function buildEmailDraft(d){
   });
  }else lines.push("No findings were returned by the checks performed. This is not proof that the website is free of weaknesses.","");
  lines.push("LINK AVAILABILITY SAMPLE");
- if(links.length) links.forEach((x,i)=>lines.push((i+1)+". "+x.url+" — "+(x.status?"HTTP "+x.status:(x.error||"Not checked"))));
+ if(links.length) links.forEach((x,i)=>lines.push((i+1)+". "+redactUrl(x.url)+" — "+(x.status?"HTTP "+x.status:(x.note||x.error||"Not checked"))));
  else lines.push("No same-site links were available for sampling.");
  lines.push("", "RECOMMENDED NEXT STEPS",
   "1. Manually validate each observation and confirm its business impact.",
