@@ -66,9 +66,9 @@ $("totalCount").textContent=s.total_issues??issues.length;
  const pageNote=$("pagesChecked");if(pageNote)pageNote.textContent=pageCount+" pages checked · limit "+(data.max_pages||"—");
  $("highCount").textContent=s.high??0;$("mediumCount").textContent=s.medium??0;$("lowCount").textContent=s.low??0;
  const securityIssues=issues.filter(x=>!isQualityFinding(x)), qualityIssues=issues.filter(isQualityFinding);
- const renderIssues=items=>items.length?items.map(x=>'<article class="issue '+safe(x.severity)+'"><h3>'+safe(String(x.title||"Finding"))+' · '+safe(x.severity||"Unclassified")+'</h3><p><b>Category:</b> '+safe(x.category||"General")+'</p><p><b>Observation:</b> '+safe(x.details||"No further detail supplied.")+'</p><p class="fix"><b>Recommended remediation:</b> '+safe(x.recommendation||"Review the affected configuration.")+'</p><p class="fix"><b>Implementation guidance:</b> '+safe(detailedFix(x))+'</p><p class="tiny muted">Affected pages: '+safe((x.affected_urls||[x.url].filter(Boolean)).map(redactUrl).join(" · ")||"Not supplied")+'</p><p class="tiny muted">Validate manually before treating this as a confirmed vulnerability.</p></article>').join(""):"<p class='muted tiny'>None reported.</p>";
+ const renderIssues=items=>items.length?items.map(x=>'<article class="issue '+safe(x.severity)+'"><h3>'+safe(String(x.title||"Finding"))+' · '+safe(x.severity||"Unclassified")+'</h3><p><b>Category:</b> '+safe(x.category||"General")+'</p><p><b>Observation:</b> '+safe(x.details||"No further detail supplied.")+'</p><p class="fix"><b>Recommended remediation:</b> '+safe(x.recommendation||"Review the affected configuration.")+'</p><p class="fix"><b>Implementation guidance:</b> '+safe(detailedFix(x))+'</p><p class="tiny muted"><b>Confidence:</b> '+safe(x.confidence||"Not rated")+' · <b>Evidence:</b> '+safe(x.evidence||x.details||"Not supplied")+'</p><p class="tiny muted">Affected pages: '+safe((x.affected_urls||[x.url].filter(Boolean)).map(redactUrl).join(" · ")||"Not supplied")+'</p><p class="tiny muted">Validate manually before treating this as a confirmed vulnerability.</p></article>').join(""):"<p class='muted tiny'>None reported.</p>";
  $("issueList").innerHTML='<h3>Security findings</h3>'+renderIssues(securityIssues)+'<h3>Website quality &amp; scan notes</h3>'+renderIssues(qualityIssues);
- $("linkList").innerHTML=links.length?links.map(x=>'<div class="link">'+safe(redactUrl(x.url))+' <b>'+(x.status?'HTTP '+safe(x.status):safe(x.note||x.error||"Not checked"))+'</b></div>').join(""):'<div class="link">No same-site links available.</div>';
+ $("linkList").innerHTML=links.length?links.map(x=>'<div class="link">'+safe(redactUrl(x.url))+' <b>'+(x.status?'HTTP '+safe(x.status):safe(x.note||x.error||"Not checked"))+'</b>'+(x.redirect_chain&&x.redirect_chain.length?'<small>Redirect chain: '+safe(x.redirect_chain.map(redactUrl).join(" → "))+'</small>':"")+(x.redirect_destination?'<small>External destination (not followed): '+safe(redactUrl(x.redirect_destination))+'</small>':"")+'</div>').join(""):'<div class="link">No same-site links available.</div>';
  scoreReport(data);$("downloadJson").disabled=false;$("printReport").disabled=false;refreshEmailDraft(data);
 }
 function restore(){
@@ -134,6 +134,8 @@ function buildEmailDraft(d){
     "   Observation: "+(x.details||"No additional details supplied."),
     "   Recommended action: "+(x.recommendation||"Review the affected configuration."),
     "   Implementation guidance: "+detailedFix(x),
+    "   Confidence: "+(x.confidence||"Not rated"),
+    "   Evidence: "+(x.evidence||x.details||"Not supplied"),
     "   Validation: Re-test after remediation.","");
   });
  }else lines.push("No findings were returned by the checks performed. This is not proof that the website is free of weaknesses.","");
