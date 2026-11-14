@@ -70,7 +70,7 @@ def page_family(raw: str) -> str:
 
 
 def content_fingerprint(soup: BeautifulSoup) -> str:
-    text = re.sub(r"\\s+", " ", soup.get_text(" ", strip=True)).lower()
+    text = re.sub(r"\s+", " ", soup.get_text(" ", strip=True)).lower()
     return hashlib.sha256(text[:20000].encode("utf-8", errors="ignore")).hexdigest()
 
 
@@ -478,7 +478,7 @@ def scan(req: ScanRequest):
             "medium": counts["medium"], "low": counts["low"],
             "info": counts["info"], "links_checked": len(page_results),
             "pages_checked": len([x for x in page_results if "status" in x]),
-            "duplicate_url_candidates_skipped": max(0, len(links_seen) - len(pages_seen)),
+            "discovered_links": len(links_seen),
             "page_families_limited": sum(1 for count in family_counts.values() if count >= MAX_PAGES_PER_FAMILY),
         },
         "crawl_policy": {"max_pages_per_path_family": MAX_PAGES_PER_FAMILY, "pagination_aware": True, "tracking_parameters_removed": sorted(TRACKING_QUERY_KEYS)},
