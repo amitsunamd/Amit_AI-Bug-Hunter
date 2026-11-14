@@ -97,73 +97,73 @@ $("downloadJson").addEventListener("click",()=>{
 $("printReport").addEventListener("click",()=>{if(latestReport)window.print();});
 function buildEmailDraft(d){
  const s=d.summary||{},issues=d.issues||[],links=d.links||[];
- const score=$(\"securityScore\").textContent,grade=$(\"securityGrade\").textContent;
- const date=d.checked_at?new Date(d.checked_at).toLocaleString():\"Not available\";
- const domain=(()=>{try{return new URL(d.target).hostname}catch(e){return d.target||\"website\"}})();
- const severity=[\"high\",\"medium\",\"low\",\"info\"].map(k=>k.toUpperCase()+\": \"+(s[k]||0)).join(\" | \");
+ const score=$("securityScore").textContent,grade=$("securityGrade").textContent;
+ const date=d.checked_at?new Date(d.checked_at).toLocaleString():"Not available";
+ const domain=(()=>{try{return new URL(d.target).hostname}catch(e){return d.target||"website"}})();
+ const severity=["high","medium","low","info"].map(k=>k.toUpperCase()+": "+(s[k]||0)).join(" | ");
  const lines=[
- \"Dear IT / Website Team,\",\"\",
- \"Please find the professional website security and quality assessment summary for \"+(d.target||\"the assessed website\")+\". The review was performed using AI Bug Hunter.\",\"\",
- \"ASSESSMENT SUMMARY\",
- \"• Website: \"+(d.target||\"N/A\"),
- \"• Page title: \"+(d.page_title||\"N/A\"),
- \"• Assessment date: \"+date,
- \"• HTTP status: \"+(d.http_status||\"Not available\"),
- \"• Observations: \"+(s.total_issues??issues.length),
- \"• Severity: \"+severity,
- \"• Indicative score: \"+score+\" (\"+grade+\")\",\"\",
- \"IDENTIFIED FINDINGS\"
+ "Dear IT / Website Team,","",
+ "Please find the professional website security and quality assessment summary for "+(d.target||"the assessed website")+". The review was performed using AI Bug Hunter.","",
+ "ASSESSMENT SUMMARY",
+ "• Website: "+(d.target||"N/A"),
+ "• Page title: "+(d.page_title||"N/A"),
+ "• Assessment date: "+date,
+ "• HTTP status: "+(d.http_status||"Not available"),
+ "• Observations: "+(s.total_issues??issues.length),
+ "• Severity: "+severity,
+ "• Indicative score: "+score+" ("+grade+")","",
+ "IDENTIFIED FINDINGS"
  ];
  if(issues.length){
   issues.forEach((x,i)=>{
-   lines.push((i+1)+\". \"+String(x.title||\"Finding\").toUpperCase(),
-    \"   Severity: \"+String(x.severity||\"Unclassified\").toUpperCase(),
-    \"   Category: \"+(x.category||\"General\"),
-    \"   Observation: \"+(x.details||\"No additional details supplied.\"),
-    \"   Recommended action: \"+(x.recommendation||\"Review the affected configuration.\"),
-    \"   Implementation guidance: \"+detailedFix(x),
-    \"   Validation: Re-test after remediation.\",\"\");
+   lines.push((i+1)+". "+String(x.title||"Finding").toUpperCase(),
+    "   Severity: "+String(x.severity||"Unclassified").toUpperCase(),
+    "   Category: "+(x.category||"General"),
+    "   Observation: "+(x.details||"No additional details supplied."),
+    "   Recommended action: "+(x.recommendation||"Review the affected configuration."),
+    "   Implementation guidance: "+detailedFix(x),
+    "   Validation: Re-test after remediation.","");
   });
- }else lines.push(\"No findings were returned by the checks performed. This is not proof that the website is free of weaknesses.\",\"\");
- lines.push(\"LINK AVAILABILITY SAMPLE\");
- if(links.length) links.forEach((x,i)=>lines.push((i+1)+\". \"+x.url+\" — \"+(x.status?\"HTTP \"+x.status:(x.error||\"Not checked\"))));
- else lines.push(\"No same-site links were available for sampling.\");
- lines.push(\"\", \"RECOMMENDED NEXT STEPS\",
-  \"1. Manually validate each observation and confirm its business impact.\",
-  \"2. Assign an owner and target date to each confirmed issue.\",
-  \"3. Apply fixes in a test environment and check for regressions.\",
-  \"4. Re-run the assessment and retain before-and-after evidence.\",\"\",
-  \"SCOPE AND LIMITATIONS\",
-  \"This was a lightweight, non-invasive automated review of publicly accessible pages and a limited sample of same-site links. It did not include exploitation, authenticated testing, source-code review, infrastructure assessment, configuration auditing or a comprehensive penetration test. Findings are observations requiring manual validation, not confirmed exploitability.\",
-  \"The score is a heuristic indicator, not a recognized certification, compliance rating or guarantee of security. Testing should only be performed on systems owned by the recipient or explicitly authorized for assessment.\",\"\",
-  \"We recommend reviewing the observations and arranging a follow-up assessment after any remediation.\",\"\",
-  \"Best regards,\",
-  \"AI Bug Hunter — Website Security Assessment\",
-  \"Generated: \"+new Date().toLocaleString()
+ }else lines.push("No findings were returned by the checks performed. This is not proof that the website is free of weaknesses.","");
+ lines.push("LINK AVAILABILITY SAMPLE");
+ if(links.length) links.forEach((x,i)=>lines.push((i+1)+". "+x.url+" — "+(x.status?"HTTP "+x.status:(x.error||"Not checked"))));
+ else lines.push("No same-site links were available for sampling.");
+ lines.push("", "RECOMMENDED NEXT STEPS",
+  "1. Manually validate each observation and confirm its business impact.",
+  "2. Assign an owner and target date to each confirmed issue.",
+  "3. Apply fixes in a test environment and check for regressions.",
+  "4. Re-run the assessment and retain before-and-after evidence.","",
+  "SCOPE AND LIMITATIONS",
+  "This was a lightweight, non-invasive automated review of publicly accessible pages and a limited sample of same-site links. It did not include exploitation, authenticated testing, source-code review, infrastructure assessment, configuration auditing or a comprehensive penetration test. Findings are observations requiring manual validation, not confirmed exploitability.",
+  "The score is a heuristic indicator, not a recognized certification, compliance rating or guarantee of security. Testing should only be performed on systems owned by the recipient or explicitly authorized for assessment.","",
+  "We recommend reviewing the observations and arranging a follow-up assessment after any remediation.","",
+  "Best regards,",
+  "AI Bug Hunter — Website Security Assessment",
+  "Generated: "+new Date().toLocaleString()
  );
- return {subject:\"[Confidential Website Assessment] \"+domain+\" — \"+(s.total_issues??issues.length)+\" observation(s)\",body:lines.join(\"\n\")};
+ return {subject:"[Confidential Website Assessment] "+domain+" — "+(s.total_issues??issues.length)+" observation(s)",body:lines.join("\n")};
 }
 function refreshEmailDraft(d){
  if(!d)return;
  const draft=buildEmailDraft(d);
- $(\"emailSubject\").value=draft.subject;
- $(\"emailBody\").value=draft.body;
+ $("emailSubject").value=draft.subject;
+ $("emailBody").value=draft.body;
 }
-$(\"emailReport\").addEventListener(\"click\",()=>{
+$("emailReport").addEventListener("click",()=>{
  if(!latestReport)return;
- const to=$(\"emailTo\").value.trim();
- if(!to||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)){$(\"emailMessage\").textContent=\"Enter a valid recipient email address.\";return;}
+ const to=$("emailTo").value.trim();
+ if(!to||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)){$("emailMessage").textContent="Enter a valid recipient email address.";return;}
  const draft=buildEmailDraft(latestReport);
- const href=\"mailto:\"+encodeURIComponent(to)+\"?subject=\"+encodeURIComponent(draft.subject)+\"&body=\"+encodeURIComponent(draft.body);
- $(\"emailMessage\").textContent=\"Draft opened in your email app. Review the content and send it manually.\";
+ const href="mailto:"+encodeURIComponent(to)+"?subject="+encodeURIComponent(draft.subject)+"&body="+encodeURIComponent(draft.body);
+ $("emailMessage").textContent="Draft opened in your email app. Review the content and send it manually.";
  window.location.href=href;
 });
-$(\"copyEmail\").addEventListener(\"click\",async()=>{
+$("copyEmail").addEventListener("click",async()=>{
  if(!latestReport)return;
  const draft=buildEmailDraft(latestReport);
- const text=\"Subject: \"+draft.subject+\"\n\n\"+draft.body;
- try{await navigator.clipboard.writeText(text);$(\"emailMessage\").textContent=\"Professional email draft copied. Paste it into your email app.\";}
- catch(e){const box=$(\"emailBody\");box.focus();box.select();const ok=document.execCommand(\"copy\");$(\"emailMessage\").textContent=ok?\"Email body copied. Copy the subject from the field above.\":\"Select and copy the draft manually.\";}
+ const text="Subject: "+draft.subject+"\n\n"+draft.body;
+ try{await navigator.clipboard.writeText(text);$("emailMessage").textContent="Professional email draft copied. Paste it into your email app.";}
+ catch(e){const box=$("emailBody");box.focus();box.select();const ok=document.execCommand("copy");$("emailMessage").textContent=ok?"Email body copied. Copy the subject from the field above.":"Select and copy the draft manually.";}
 });
 restore();
 // Service worker disabled to prevent stale scanner JavaScript from being cached.
