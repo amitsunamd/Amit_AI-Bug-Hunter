@@ -156,6 +156,8 @@ def page_audit(response, page_url, issues, seen):
         "strict-transport-security": ("medium", "Enable HSTS after confirming HTTPS works."),
     }
     for header, (severity, fix) in checks.items():
+        if header == "strict-transport-security" and not page_url.startswith("https://"):
+            continue
         if header not in headers:
             add_unique_issue(issues, seen, severity, "Security headers",
                 f"Missing {header}", "The response did not include this common security header.",
