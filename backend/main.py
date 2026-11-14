@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import ipaddress
+import re
 import socket
 import time
 from collections import Counter, deque
@@ -38,6 +40,38 @@ UA = "Amit-AI-Bug-Hunter/0.2 (authorized non-invasive checker)"
 
 class CrossHostRedirectBlocked(ValueError):
     """A redirect was intentionally not followed because it leaves the scan host."""
+    def __init__(self, source: str, destination: str):
+        super().__init__("Cross-host redirects are blocked.")
+        self.source = source
+        self.destination = destination
+
+
+TRACKING_QUERY_KEYS = {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid", "mc_cid", "mc_eid"}
+PAGINATION_QUERY_KEYS = {"page", "paged", "p", "ssf_paged", "offset", "start", "page_num", "page_number"}
+MAX_PAGES_PER_FAMILY = 5
+
+
+def normalize_crawl_url(raw: str) -> str:
+    """Normalize URL identity without discarding meaningful application parameters."""
+    p = urlparse(raw)
+    query = [(k, v) for k, v in parse_qsl(p.query, keep_blank_values=True)
+             if k.lower() not in TRACKING_QUERY_KEYS]
+    query.sort(key=lambda pair: (pair[0].lower(), pair[1]))
+    path = re.sub(r"/{2,}", "/", p.path or "/")
+    return urlunparse((p.scheme.lower(), p.netloc.lower(), path, "", urlencode(query), ""))
+
+
+def page_family(raw: str) -> str:
+    """Group pagination variants of one path while retaining non-pagination query identity."""
+    p = urlparse(normalize_crawl_url(raw))
+    query = [(k, v) for k, v in parse_qsl(p.query, keep_blank_values=True)
+             if k.lower() not in PAGINATION_QUERY_KEYS]
+    return urlunparse((p.scheme, p.netloc, p.path, "", urlencode(query), ""))
+
+
+def content_fingerprint(soup: BeautifulSoup) -> str:
+    text = re.sub(r"\\s+", " ", soup.get_text(" ", strip=True)).lower()
+    return hashlib.sha256(text[:20000].encode("utf-8", errors="ignore")).hexdigest()
 
 
 SENSITIVE_QUERY_KEYS = {
@@ -98,10 +132,12 @@ def validate_url(raw: str, expected_host: str | None = None) -> str:
 
 def safe_get(url: str, host: str) -> requests.Response:
     current = validate_url(url, host)
+    redirect_chain = []
     session = requests.Session()
     session.headers["User-Agent"] = UA
     for _ in range(4):
         current = validate_url(current, host)
+        redirect_chain.append(redact_url(current))
         response = session.get(
             current, timeout=TIMEOUT, allow_redirects=False, stream=True
         )
@@ -118,7 +154,7 @@ def safe_get(url: str, host: str) -> requests.Response:
                 current = validate_url(redirected, host)
             except ValueError as exc:
                 if "Cross-host redirects are blocked" in str(exc):
-                    raise CrossHostRedirectBlocked(str(exc)) from exc
+                    raise CrossHostRedirectBlocked(current, redact_url(redirected)) from exc
                 raise
             continue
         # Bound memory use even when a target returns a very large page.
@@ -139,6 +175,7 @@ def safe_get(url: str, host: str) -> requests.Response:
             response._content_consumed = True
         finally:
             response.close()
+        response._bughunter_redirect_chain = redirect_chain
         return response
     raise ValueError("Too many redirects.")
 
@@ -168,6 +205,8 @@ def add_unique_issue(out, seen, severity, category, title, details, fix, url):
         "severity": severity, "category": category, "title": title,
         "details": details, "recommendation": fix, "url": redact_url(url) if url else None,
         "affected_urls": [redact_url(url)] if url else [],
+        "confidence": "high" if category in {"Availability", "Security headers", "Cookie security", "Transport security"} else ("medium" if severity in {"high", "medium", "low"} else "low"),
+        "evidence": details,
     }
     out.append(item)
 
@@ -324,23 +363,68 @@ def scan(req: ScanRequest):
     seen_issues = set()
     links_seen = set()
     pages_seen = set()
-    queue = deque([target])
+    canonical_seen = {}
+    fingerprint_seen = {}
+    family_counts = Counter()
+    queue = deque([(target, None)])
     page_results = []
     first_title = ""
     first_status = first_response.status_code
     first_content_type = first_response.headers.get("Content-Type", "")
 
     while queue and len(pages_seen) < req.max_pages:
-        page_url = queue.popleft()
-        if page_url in pages_seen:
+        page_url, source_page = queue.popleft()
+        page_key = normalize_crawl_url(page_url)
+        if page_key in pages_seen:
             continue
-        pages_seen.add(page_url)
+        family = page_family(page_url)
+        if family_counts[family] >= MAX_PAGES_PER_FAMILY:
+            continue
+        family_counts[family] += 1
+        pages_seen.add(page_key)
         try:
             response = first_response if page_url == target else safe_get(page_url, host)
             soup, title = page_audit(response, page_url, issues, seen_issues)
+            redirect_chain = getattr(response, "_bughunter_redirect_chain", [redact_url(page_url)])
+            if len(redirect_chain) > 1:
+                add_unique_issue(issues, seen_issues, "info", "Redirect analysis",
+                    "Same-host redirect chain observed",
+                    "The request followed " + str(len(redirect_chain) - 1) + " same-host redirect(s): " + " → ".join(redirect_chain),
+                    "Review whether each redirect is necessary and update internal links to point directly to the final URL.", page_url)
+            if response.status_code >= 400 and source_page:
+                add_unique_issue(issues, seen_issues, "medium" if response.status_code < 500 else "high", "Broken link",
+                    f"Internal link returned HTTP {response.status_code}",
+                    "A same-host link discovered on " + redact_url(source_page) + " returned HTTP " + str(response.status_code) + ".",
+                    "Restore the destination, correct the link, or add an intentional redirect to the correct page.", page_url)
             if page_url == target:
                 first_title = title
-            page_results.append({"url": redact_url(page_url), "status": response.status_code, "title": title})
+            page_results.append({"url": redact_url(page_url), "status": response.status_code, "title": title,
+                                 "redirect_chain": redirect_chain if len(redirect_chain) > 1 else []})
+            canonical = soup.find("link", rel=lambda value: value and "canonical" in ([x.lower() for x in value] if isinstance(value, list) else str(value).lower().split()))
+            if canonical and canonical.get("href"):
+                canonical_url = urljoin(page_url, canonical["href"])
+                try:
+                    canonical_url = normalize_crawl_url(validate_url(canonical_url, host))
+                    prior = canonical_seen.get(canonical_url)
+                    if prior and prior != page_key:
+                        add_unique_issue(issues, seen_issues, "info", "Duplicate content",
+                            "Multiple pages declare the same canonical URL",
+                            "This page and " + redact_url(prior) + " declare the same canonical destination.",
+                            "Confirm that the canonical URL is intentional and that duplicate pages should be consolidated for indexing.", page_url)
+                    else:
+                        canonical_seen[canonical_url] = page_key
+                except ValueError:
+                    pass
+            fingerprint = content_fingerprint(soup)
+            if fingerprint and len(soup.get_text(" ", strip=True)) >= 180:
+                prior_page = fingerprint_seen.get(fingerprint)
+                if prior_page and prior_page != page_key:
+                    add_unique_issue(issues, seen_issues, "info", "Duplicate content",
+                        "Near-identical page text detected",
+                        "The visible text fingerprint matches another crawled page: " + redact_url(prior_page) + ". This may be a legitimate duplicate or template page.",
+                        "Compare both pages and use canonical tags or unique page content where appropriate.", page_url)
+                else:
+                    fingerprint_seen[fingerprint] = page_key
             for anchor in soup.find_all("a", href=True):
                 candidate = urljoin(page_url, anchor["href"])
                 cp = urlparse(candidate)
@@ -358,12 +442,13 @@ def scan(req: ScanRequest):
                                   ".pdf", ".zip", ".gz", ".mp4", ".mp3", ".css", ".js",
                                   ".ico", ".woff", ".woff2", ".ttf")):
                     continue
-                if candidate not in links_seen:
-                    links_seen.add(candidate)
-                    if candidate not in pages_seen and len(pages_seen) + len(queue) < req.max_pages:
-                        queue.append(candidate)
+                candidate_key = normalize_crawl_url(candidate)
+                if candidate_key not in links_seen:
+                    links_seen.add(candidate_key)
+                    if candidate_key not in pages_seen and len(pages_seen) + len(queue) < req.max_pages:
+                        queue.append((candidate, page_url))
             time.sleep(CRAWL_DELAY)
-        except CrossHostRedirectBlocked:
+        except CrossHostRedirectBlocked as redirect_error:
             add_unique_issue(
                 issues, seen_issues, "info", "Scan limitation",
                 "Cross-host redirect not followed",
@@ -374,6 +459,7 @@ def scan(req: ScanRequest):
             page_results.append({
                 "url": redact_url(page_url),
                 "note": "Cross-host redirect blocked; destination not followed",
+                "redirect_destination": redirect_error.destination,
             })
         except (ValueError, requests.RequestException) as exc:
             page_results.append({"url": redact_url(page_url), "error": str(exc)})
@@ -392,7 +478,11 @@ def scan(req: ScanRequest):
             "medium": counts["medium"], "low": counts["low"],
             "info": counts["info"], "links_checked": len(page_results),
             "pages_checked": len([x for x in page_results if "status" in x]),
+            "duplicate_url_candidates_skipped": max(0, len(links_seen) - len(pages_seen)),
+            "page_families_limited": sum(1 for count in family_counts.values() if count >= MAX_PAGES_PER_FAMILY),
         },
+        "crawl_policy": {"max_pages_per_path_family": MAX_PAGES_PER_FAMILY, "pagination_aware": True, "tracking_parameters_removed": sorted(TRACKING_QUERY_KEYS)},
+
         "issues": issues,
         "links": page_results,
         "limitations": [
